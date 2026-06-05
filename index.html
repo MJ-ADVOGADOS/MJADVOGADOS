@@ -2448,9 +2448,114 @@ function filterParProcStatus(status, el){
   });
   renderParProcRows(list);
 }
+// ============================================================
+// HELPERS VISUAIS
+// ============================================================
+function showToast(msg, type=''){
+  const c=document.getElementById('toast-container');
+  if(!c) return;
+  const t=document.createElement('div');
+  t.className='toast'+(type?' toast-'+type:'');
+  t.textContent=msg;
+  c.appendChild(t);
+  setTimeout(()=>t.classList.add('show'),10);
+  setTimeout(()=>{ t.classList.remove('show'); setTimeout(()=>t.remove(),300); },3200);
+}
 
+function openModal(id){ const m=document.getElementById(id); if(m) m.classList.remove('hidden'); }
+function closeModal(id){ const m=document.getElementById(id); if(m) m.classList.add('hidden'); }
+function closeConfirm(){ document.getElementById('confirm-overlay').classList.add('hidden'); }
+function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2); }
 
-</script>
+function formatDate(d){
+  if(!d) return '—';
+  try{ return new Date(d+'T12:00:00').toLocaleDateString('pt-BR'); }catch{ return d; }
+}
 
+function formatMoney(v){
+  if(!v||isNaN(v)) return '—';
+  return 'R$ '+Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2});
+}
+
+function statusLabel(s){
+  const m={ativo:'Ativo',finalizado:'Finalizado',recurso:'Recurso',
+    cumprimento:'Cumprimento',sentenca:'Sentença',encerrado:'Encerrado'};
+  return m[s]||s||'Ativo';
+}
+
+function resBadgeClass(r){
+  if(!r) return 'b-gray';
+  r=r.toUpperCase();
+  if(r.includes('PROCEDENTE')) return 'b-green';
+  if(r.includes('IMPROCEDENTE')) return 'b-red';
+  if(r.includes('ACORDO')) return 'b-blue';
+  if(r.includes('EXTINTO')) return 'b-gray';
+  if(r.includes('ABSOLVIDO')) return 'b-green';
+  if(r.includes('CONDENADO')) return 'b-red';
+  return 'b-amber';
+}
+
+function updateBadges(){
+  const tarefas=getTarefas().filter(t=>t.status!=='concluida');
+  const hoje=new Date(); hoje.setHours(0,0,0,0);
+  const prazos=getPrazos().filter(p=>{
+    if(p.status==='concluido') return false;
+    const d=new Date(p.data+'T12:00:00'); d.setHours(0,0,0,0);
+    return d<=hoje;
+  });
+  const bt=document.getElementById('badge-tarefas');
+  const bp=document.getElementById('badge-prazos');
+  if(bt){ bt.textContent=tarefas.length; bt.style.display=tarefas.length?'':'none'; }
+  if(bp){ bp.textContent=prazos.length; bp.style.display=prazos.length?'':'none'; }
+}
+
+function initApp(){
+  applyRoleUI();
+  const page = isParceiro() ? 'parcerias' : 'dashboard';
+  navigate(page);
+  if(FB.ready){
+    if(isAdmin()){
+      DataStore.loadFromFirebase().then(()=>{
+        DataStore.startListeners();
+        renderPage(currentPage);
+        updateBadges();
+      });
+    }
+    ParStore.loadFromFirebase().then(()=>{
+      ParStore.startListeners();
+      if(currentPage==='parcerias') renderParContent();
+    });
+  }
+  if(isAdmin()) setTimeout(checkBackupDiario, 3000);
+}
+
+window.onload = async function(){
+  FB.init();
+  if(!FB.ready){
+    document.getElementById('login-screen').style.display='flex';
+    return;
+  }
+  FB.auth.onAuthStateChanged(async user=>{
+    if(user){
+      try{
+        const info = await FB.getUserInfo(user.uid);
+        if(!info){ await FB.auth.signOut(); return; }
+        CURRENT_USER = { uid:user.uid, email:user.email, role:info.role, nome:info.nome };
+        DataStore.initFromLocal();
+        ParStore.initFromLocal();
+        document.getElementById('login-screen').style.display='none';
+        document.getElementById('app').style.display='flex';
+        initApp();
+      }catch(e){
+        console.error('onAuthStateChanged erro:', e);
+        document.getElementById('login-screen').style.display='flex';
+      }
+    } else {
+      document.getElementById('login-screen').style.display='flex';
+      document.getElementById('app').style.display='none';
+    }
+  });
+};
+   </script>
 
 </body></html>
