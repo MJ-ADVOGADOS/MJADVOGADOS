@@ -1606,19 +1606,21 @@ textarea.form-control{resize:vertical;min-height:72px}
           </div>
           <table style="table-layout:fixed;width:100%">
             <colgroup>
-              <col style="width:13%"><!-- Cliente -->
-              <col style="width:18%"><!-- Número -->
+              <col style="width:6%"> <!-- ID -->
+              <col style="width:12%"><!-- Cliente -->
+              <col style="width:16%"><!-- Número -->
               <col style="width:7%"> <!-- Tribunal -->
-              <col style="width:7%"> <!-- Sistema -->
-              <col style="width:10%"><!-- Área Jurídica -->
-              <col style="width:10%"><!-- Tipo de Ação -->
-              <col style="width:10%"><!-- Fase Atual -->
-              <col style="width:9%"> <!-- Resultado -->
+              <col style="width:6%"> <!-- Sistema -->
+              <col style="width:9%"> <!-- Área Jurídica -->
+              <col style="width:9%"> <!-- Tipo de Ação -->
+              <col style="width:9%"> <!-- Fase Atual -->
+              <col style="width:8%"> <!-- Resultado -->
               <col style="width:7%"> <!-- Status -->
-              <col style="width:7%"> <!-- V. Recebido -->
-              <col style="width:8%"> <!-- Ações -->
+              <col style="width:6%"> <!-- V. Recebido -->
+              <col style="width:5%"> <!-- Ações -->
             </colgroup>
             <thead><tr>
+              <th title="Identificador do caso">ID</th>
               <th title="Nome do cliente">Cliente</th>
               <th title="Número do processo">Número do processo</th>
               <th title="Tribunal">Tribunal</th>
@@ -3492,6 +3494,7 @@ textarea.form-control{resize:vertical;min-height:72px}
       <div id="pg-parcerias" class="hidden">
         <!-- SUBNAVEGAÇÃO PARCERIAS -->
         <div class="chips" id="par-chips" style="margin-bottom:16px">
+          <div class="chip" onclick="setParTab(&#39;dashboard&#39;,this)"><i class="ti ti-layout-dashboard" style="font-size:12px;margin-right:4px"></i>Dashboard</div>
           <div class="chip" onclick="setParTab(&#39;clientes&#39;,this)"><i class="ti ti-users" style="font-size:12px;margin-right:4px"></i>Clientes</div>
           <div class="chip active" onclick="setParTab(&#39;processos&#39;,this)"><i class="ti ti-files" style="font-size:12px;margin-right:4px"></i>Processos</div>
           <div class="chip" onclick="setParTab(&#39;tarefas&#39;,this)"><i class="ti ti-checkbox" style="font-size:12px;margin-right:4px"></i>Tarefas</div>
@@ -4723,6 +4726,8 @@ function initApp(){
   updateBadges();
   // Backup diário automático
   if(isAdmin()) setTimeout(checkBackupDiario, 3000);
+  // IDs sequenciais — inicializa uma única vez se ainda não existirem
+  if(isAdmin()) setTimeout(inicializarCardIds, 4000);
   if(isAdmin()) navigate('dashboard');
   else navigate('parcerias');
 }
@@ -4745,9 +4750,18 @@ function applyRoleUI(){
 
 // Sub-tab atual de parcerias
 let parTab='clientes';
+let parSearchQuery='';
+
+function globalSearch(val){
+  parSearchQuery=(val||'').toLowerCase().trim();
+  if(parTab==='processos') renderParProcessos();
+}
 
 function setParTab(tab, el){
   parTab=tab;
+  parSearchQuery='';
+  const inp=document.getElementById('global-search');
+  if(inp) inp.value='';
   document.querySelectorAll('#par-chips .chip').forEach(c=>c.classList.remove('active'));
   if(el) el.classList.add('active');
   renderParContent();
@@ -4776,7 +4790,8 @@ function renderParContent(){
   const btnLabels={clientes:'Novo cliente',processos:'Novo processo',financeiro:'Novo lançamento',tarefas:'Nova tarefa',
     prazos:'Novo prazo',agenda:'Novo compromisso',movimentacoes:'Nova movimentação',documentos:'Cadastrar doc.'};
   document.getElementById('topbar-action-txt').textContent=btnLabels[parTab]||'Novo';
-  if(parTab==='clientes') renderParClientes();
+  if(parTab==='dashboard') renderParDashboard();
+  else if(parTab==='clientes') renderParClientes();
   else if(parTab==='processos') renderParProcessos();
   else if(parTab==='tarefas') renderParTarefas();
   else if(parTab==='prazos') renderParPrazos();
@@ -4784,6 +4799,219 @@ function renderParContent(){
   else if(parTab==='movimentacoes') renderParMovs();
   else if(parTab==='financeiro') renderParFinanceiro();
   else if(parTab==='documentos') renderParDocs();
+}
+
+function renderParDashboard(){
+  const el=document.getElementById('par-content');
+  if(!el) return;
+  document.getElementById('topbar-action-txt').textContent='Dashboard';
+  const procs = getParProcessos();
+  const clientes = getParClientes();
+  const tarefas = getParTarefas();
+  const lancs = getParLancamentos();
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+  const ativos = procs.filter(p=>p.status==='ativo').length;
+  const finalizados = procs.filter(p=>p.status==='finalizado').length;
+  const pendentes = tarefas.filter(t=>t.status!=='concluida').length;
+  const prazosVenc = getParPrazos().filter(p=>{
+    if(p.status==='concluido') return false;
+    const d=new Date((p.data||'')+'T12:00:00'); d.setHours(0,0,0,0);
+    return d<=hoje;
+  }).length;
+  const receita = lancs.filter(l=>l.tipo!=='despesa'&&l.status==='recebido').reduce((s,l)=>s+(parseFloat(l.valor)||0),0);
+
+  // Análise por matéria
+  const areasCfg=[
+    {nome:'CÍVEL',     cor:'var(--blue-400)',  bg:'rgba(59,130,246,.12)'},
+    {nome:'CRIMINAL',  cor:'var(--red-400)',   bg:'rgba(239,68,68,.12)'},
+    {nome:'TRABALHISTA',cor:'var(--amber-400)',bg:'rgba(245,158,11,.12)'},
+    {nome:'FAMÍLIA',   cor:'#a855f7',          bg:'rgba(168,85,247,.12)'},
+  ];
+  const totalProcs=procs.length||1;
+  const areasData=areasCfg.map(({nome,cor,bg})=>{
+    const lista=procs.filter(p=>(p.area||'').toUpperCase()===nome);
+    const ids=new Set(lista.map(p=>p.id));
+    const rec=lancs.filter(l=>l.tipo!=='despesa'&&l.status==='recebido'&&ids.has(l.procId)).reduce((s,l)=>s+(parseFloat(l.valor)||0),0);
+    return {nome,cor,bg,count:lista.length,pct:Math.round(lista.length/totalProcs*100),rec};
+  });
+  const nomesPrincipais=new Set(areasCfg.map(a=>a.nome));
+  const outrosLista=procs.filter(p=>!nomesPrincipais.has((p.area||'').toUpperCase()));
+  if(outrosLista.length>0){
+    const ids=new Set(outrosLista.map(p=>p.id));
+    const rec=lancs.filter(l=>l.tipo!=='despesa'&&l.status==='recebido'&&ids.has(l.procId)).reduce((s,l)=>s+(parseFloat(l.valor)||0),0);
+    areasData.push({nome:'OUTROS',cor:'var(--text-muted)',bg:'rgba(100,100,100,.1)',count:outrosLista.length,pct:Math.round(outrosLista.length/totalProcs*100),rec});
+  }
+
+  // Taxa de êxito
+  const comRes=procs.filter(p=>p.resultado&&p.resultado.trim());
+  const totalRes=comRes.length||1;
+  const nProc=comRes.filter(p=>{ const r=(p.resultado||'').toUpperCase(); return r.includes('PROCEDENTE')&&!r.includes('IMPROCEDENTE'); }).length;
+  const nAcor=comRes.filter(p=>(p.resultado||'').toUpperCase().includes('ACORDO')).length;
+  const nImpr=comRes.filter(p=>(p.resultado||'').toUpperCase().includes('IMPROCEDENTE')).length;
+  const nOutr=comRes.length-nProc-nAcor-nImpr;
+  const taxaExito=comRes.length?Math.round((nProc+nAcor)/comRes.length*100):0;
+  const barResultados=[
+    {label:'Procedente',n:nProc,cor:'var(--green-400)'},
+    {label:'Acordo',n:nAcor,cor:'var(--blue-400)'},
+    {label:'Improcedente',n:nImpr,cor:'var(--red-400)'},
+    ...(nOutr>0?[{label:'Outros',n:nOutr,cor:'var(--text-muted)'}]:[]),
+  ];
+
+  el.innerHTML=`
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:16px;margin-bottom:24px">
+    ${[
+      {label:'Total de processos',val:procs.length,icon:'ti-files',color:'var(--gold-400)'},
+      {label:'Processos ativos',val:ativos,icon:'ti-activity',color:'var(--blue-400)'},
+      {label:'Finalizados',val:finalizados,icon:'ti-check',color:'var(--green-400)'},
+      {label:'Tarefas pendentes',val:pendentes,icon:'ti-checkbox',color:'var(--amber-400)'},
+      {label:'Prazos vencidos',val:prazosVenc,icon:'ti-clock-exclamation',color:'var(--red-400)'},
+      {label:'Total recebido',val:formatMoney(receita),icon:'ti-currency-dollar',color:'var(--green-400)'},
+    ].map(c=>`<div class="card" style="padding:16px 18px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+        <i class="ti ${c.icon}" style="font-size:20px;color:${c.color}"></i>
+        <span style="font-size:12px;color:var(--text-secondary)">${c.label}</span>
+      </div>
+      <div style="font-size:24px;font-weight:700;color:var(--text-primary)">${c.val}</div>
+    </div>`).join('')}
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px">
+    <div class="card" style="padding:18px 20px">
+      <div style="font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:16px;display:flex;align-items:center;gap:8px">
+        <i class="ti ti-chart-pie" style="color:var(--gold-400)"></i> Processos por matéria
+      </div>
+      ${areasData.map(a=>`
+      <div style="margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px">
+          <div style="display:flex;align-items:center;gap:7px">
+            <span style="width:9px;height:9px;border-radius:50%;background:${a.cor};display:inline-block;flex-shrink:0"></span>
+            <span style="font-size:12px;font-weight:600;color:var(--text-primary)">${a.nome}</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="font-size:11px;color:var(--text-muted)">${a.count} caso${a.count!==1?'s':''}</span>
+            <span style="font-size:11px;font-weight:700;color:${a.cor};min-width:34px;text-align:right">${a.pct}%</span>
+          </div>
+        </div>
+        <div style="height:5px;background:var(--border-default);border-radius:4px;overflow:hidden">
+          <div style="height:100%;width:${a.pct}%;background:${a.cor};border-radius:4px"></div>
+        </div>
+        <div style="font-size:10.5px;color:var(--text-muted);margin-top:3px;text-align:right">${a.rec>0?formatMoney(a.rec)+' recebido':'—'}</div>
+      </div>`).join('')}
+    </div>
+
+    <div class="card" style="padding:18px 20px">
+      <div style="font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:4px;display:flex;align-items:center;gap:8px">
+        <i class="ti ti-trophy" style="color:var(--gold-400)"></i> Taxa de êxito
+      </div>
+      <div style="font-size:11px;color:var(--text-muted);margin-bottom:16px">${comRes.length} caso${comRes.length!==1?'s':''} com resultado registrado</div>
+      ${comRes.length===0?`<div style="text-align:center;padding:24px 0;color:var(--text-muted);font-size:13px">Nenhum resultado registrado ainda.</div>`:`
+      <div style="text-align:center;margin-bottom:20px">
+        <div style="font-size:48px;font-weight:800;color:${taxaExito>=70?'var(--green-400)':taxaExito>=50?'var(--amber-400)':'var(--red-400)'};line-height:1">${taxaExito}%</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:4px">êxito (procedentes + acordos)</div>
+      </div>
+      ${barResultados.map(r=>`
+      <div style="margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+          <span style="font-size:12px;color:var(--text-primary);display:flex;align-items:center;gap:6px">
+            <span style="width:8px;height:8px;border-radius:50%;background:${r.cor};display:inline-block"></span>${r.label}
+          </span>
+          <span style="font-size:12px;font-weight:700;color:${r.cor}">${r.n} <span style="font-weight:400;color:var(--text-muted)">(${Math.round(r.n/totalRes*100)}%)</span></span>
+        </div>
+        <div style="height:5px;background:var(--border-default);border-radius:4px;overflow:hidden">
+          <div style="height:100%;width:${Math.round(r.n/totalRes*100)}%;background:${r.cor};border-radius:4px"></div>
+        </div>
+      </div>`).join('')}`}
+    </div>
+  </div>
+
+  <div class="card" style="padding:18px 20px;margin-bottom:24px">
+    <div style="font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:16px;display:flex;align-items:center;gap:8px">
+      <i class="ti ti-cash" style="color:var(--gold-400)"></i> Receita recebida por matéria
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px">
+      ${areasData.map(a=>`
+      <div style="background:${a.bg};border:1px solid ${a.cor}33;border-radius:10px;padding:14px 16px">
+        <div style="display:flex;align-items:center;gap:7px;margin-bottom:8px">
+          <span style="width:8px;height:8px;border-radius:50%;background:${a.cor};display:inline-block;flex-shrink:0"></span>
+          <span style="font-size:11px;font-weight:700;color:${a.cor};letter-spacing:.4px">${a.nome}</span>
+        </div>
+        <div style="font-size:18px;font-weight:800;color:var(--text-primary);line-height:1.1">${a.rec>0?formatMoney(a.rec):'R$ 0,00'}</div>
+        <div style="font-size:10.5px;color:var(--text-muted);margin-top:4px">${a.count} caso${a.count!==1?'s':''} · ${a.pct}% do total</div>
+      </div>`).join('')}
+    </div>
+  </div>
+
+  ${(()=>{
+    const areasExito=[
+      {nome:'CÍVEL',cor:'var(--blue-400)',bg:'rgba(59,130,246,.08)'},
+      {nome:'TRABALHISTA',cor:'var(--amber-400)',bg:'rgba(245,158,11,.08)'},
+    ];
+    return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px">
+    ${areasExito.map(({nome,cor})=>{
+      const procsDaArea=procs.filter(p=>(p.area||'').toUpperCase()===nome);
+      const comResArea=procsDaArea.filter(p=>p.resultado&&p.resultado.trim());
+      const byTipo={};
+      comResArea.forEach(p=>{
+        const tipo=(p.objeto||'Não informado').trim()||'Não informado';
+        if(!byTipo[tipo]) byTipo[tipo]={total:0,exito:0};
+        byTipo[tipo].total++;
+        const r=(p.resultado||'').toUpperCase();
+        if((r.includes('PROCEDENTE')&&!r.includes('IMPROCEDENTE'))||r.includes('ACORDO')) byTipo[tipo].exito++;
+      });
+      const sorted=Object.entries(byTipo).sort((a,b)=>b[1].total-a[1].total).slice(0,7);
+      return `<div class="card" style="padding:18px 20px">
+        <div style="font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:4px;display:flex;align-items:center;gap:8px">
+          <i class="ti ti-scale" style="color:${cor}"></i> Êxito por tipo — ${nome.charAt(0)+nome.slice(1).toLowerCase()}
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:14px">${comResArea.length} caso${comResArea.length!==1?'s':''} com resultado · ${procsDaArea.length} total</div>
+        ${sorted.length===0?`<div style="color:var(--text-muted);font-size:13px;padding:16px 0;text-align:center">Nenhum resultado registrado.</div>`
+        :sorted.map(([tipo,d])=>{
+          const pctExito=Math.round(d.exito/d.total*100);
+          const corBarra=pctExito>=70?'var(--green-400)':pctExito>=50?'var(--amber-400)':'var(--red-400)';
+          return `<div style="margin-bottom:12px">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
+              <span style="font-size:11.5px;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:68%" title="${tipo}">${tipo}</span>
+              <span style="font-size:11px;font-weight:700;color:${corBarra};flex-shrink:0;margin-left:6px">${pctExito}% <span style="font-weight:400;color:var(--text-muted)">(${d.exito}/${d.total})</span></span>
+            </div>
+            <div style="height:5px;background:var(--border-default);border-radius:4px;overflow:hidden">
+              <div style="height:100%;width:${pctExito}%;background:${corBarra};border-radius:4px"></div>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>`;
+    }).join('')}
+    </div>`;
+  })()}
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+    <div class="card">
+      <div class="card-header"><span class="card-title">Últimos processos</span></div>
+      <div style="padding:0 16px 12px">
+        ${procs.slice(0,6).map(p=>{
+          const c=clientes.find(x=>x.id===p.clienteId);
+          return `<div class="dl-item">
+            <div class="dl-dot" style="background:var(--gold-400)"></div>
+            <div class="dl-info">
+              <div class="dl-proc" style="font-size:11.5px">${c?c.nome:'—'}</div>
+              <div class="dl-desc">${p.numero||'—'}</div>
+            </div>
+            <span class="status-dot s-${p.status||'ativo'}">${statusLabel(p.status||'ativo')}</span>
+          </div>`;
+        }).join('')||'<p style="color:var(--text-muted);font-size:13px;padding:8px 0">Nenhum processo.</p>'}
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Tarefas pendentes</span></div>
+      <div style="padding:0 16px 12px">
+        ${tarefas.filter(t=>t.status!=='concluida').slice(0,6).map(t=>`
+        <div class="dl-item">
+          <div class="dl-dot" style="background:var(--amber-400)"></div>
+          <div class="dl-info"><div class="dl-proc" style="font-size:12px">${t.titulo||'—'}</div></div>
+          ${t.data?`<div class="dl-date">${formatDate(t.data)}</div>`:''}
+        </div>`).join('')||'<p style="color:var(--text-muted);font-size:13px;padding:8px 0">Nenhuma tarefa pendente.</p>'}
+      </div>
+    </div>
+  </div>`;
 }
 
 // ── CLIENTES PARCEIROS ──────────────────────────────────────
@@ -4917,6 +5145,7 @@ async function saveParProcesso(){
     andamento:document.getElementById('par-proc-andamento').value,
     obs:document.getElementById('par-proc-obs').value,
     criadoPor:CURRENT_USER?.email||'',criadoEm:new Date().toISOString()};
+  if(!id){ const nextId=await getNextCardId(); if(nextId) obj.cardId=nextId; }
   const list=getParProcessos();
   if(id){const i=list.findIndex(x=>x.id===id);list[i]={...list[i],...obj};}
   else list.push(obj);
@@ -4935,14 +5164,36 @@ function renderParProcessos(){
   const _encerrados=['finalizado','encerrado'];
   const ativos_par = all_par.filter(p=>!_encerrados.includes(p.status)).sort((a,b)=>new Date(b.criadoEm||0)-new Date(a.criadoEm||0));
   const finalizados_par = all_par.filter(p=>_encerrados.includes(p.status)).sort((a,b)=>new Date(b.criadoEm||0)-new Date(a.criadoEm||0));
-  const list=[...ativos_par,...finalizados_par];
+  let list=[...ativos_par,...finalizados_par];
+  if(parSearchQuery){
+    list=list.filter(p=>{
+      const c=getParClientes().find(x=>x.id===p.clienteId);
+      const campos=[c?.nome||'',p.numero||'',p.objeto||'',p.area||'',p.tribunal||'',p.resultado||'',p.fase||''];
+      return campos.some(v=>v.toLowerCase().includes(parSearchQuery));
+    });
+  }
   el.innerHTML=`<div class="table-wrap">
     <div class="table-toolbar">
       <div class="table-toolbar-left"><span class="card-title">Processos (${list.length})</span></div>
       <button class="btn btn-primary btn-sm" onclick="openParProcessoModal()"><i class="ti ti-plus"></i> Novo processo</button>
     </div>
-    <table>
+    <table style="table-layout:fixed;width:100%">
+      <colgroup>
+        <col style="width:6%"> <!-- ID -->
+        <col style="width:13%"><!-- Cliente -->
+        <col style="width:16%"><!-- Número -->
+        <col style="width:7%"> <!-- Tribunal -->
+        <col style="width:6%"> <!-- Sistema -->
+        <col style="width:9%"> <!-- Área Jurídica -->
+        <col style="width:9%"> <!-- Tipo de Ação -->
+        <col style="width:9%"> <!-- Fase Atual -->
+        <col style="width:8%"> <!-- Resultado -->
+        <col style="width:7%"> <!-- Status -->
+        <col style="width:6%"> <!-- V. Recebido -->
+        <col style="width:4%"> <!-- Ações -->
+      </colgroup>
       <thead><tr>
+        <th>ID</th>
         <th>CLIENTE</th>
         <th>NÚMERO DO PROCESSO</th>
         <th>TRIBUNAL</th>
@@ -4959,13 +5210,14 @@ function renderParProcessos(){
     </table>
   </div>`;
   const tbody=document.getElementById('par-tbody-proc');
-  if(!list.length){tbody.innerHTML='<tr class="empty-row"><td colspan="11">Nenhum processo cadastrado.</td></tr>';return;}
+  if(!list.length){tbody.innerHTML='<tr class="empty-row"><td colspan="12">Nenhum processo cadastrado.</td></tr>';return;}
   tbody.innerHTML=list.map(p=>{
     const c=getParClientes().find(x=>x.id===p.clienteId);
     const nome=c?(c.nome.toUpperCase()):'—';
     const valRec=(p.valor||p.valorRecebido)>0?'R$ '+Number(p.valor||p.valorRecebido).toLocaleString('pt-BR',{minimumFractionDigits:2}):'—';
     const resBadge=p.resultado?`<span class="badge ${resBadgeClass(p.resultado)}" title="${p.resultado}">${p.resultado.length>10?p.resultado.substring(0,10)+'…':p.resultado}</span>`:'—';
     return `<tr style="cursor:pointer" onclick="viewProcesso('${p.id}',true)">
+      <td style="font-size:10.5px;font-weight:700;color:var(--gold-400);white-space:nowrap;letter-spacing:.3px">${formatCardId(p.cardId)}</td>
       <td style="font-size:11.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${nome}">${nome}</td>
       <td class="td-mono" style="font-size:10.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${p.numero}">${p.numero}</td>
       <td class="td-2">${p.tribunal||'—'}</td>
@@ -5241,8 +5493,8 @@ function statusLabel(s){
 function resBadgeClass(r){
   if(!r) return 'b-gray';
   r=r.toUpperCase();
-  if(r.includes('PROCEDENTE')) return 'b-green';
   if(r.includes('IMPROCEDENTE')) return 'b-red';
+  if(r.includes('PROCEDENTE')) return 'b-green';
   if(r.includes('ACORDO')) return 'b-blue';
   if(r.includes('EXTINTO')) return 'b-gray';
   if(r.includes('ABSOLVIDO')) return 'b-green';
@@ -5323,6 +5575,7 @@ function renderDashboard(){
   const procs = getProcessos();
   const clientes = getClientes();
   const tarefas = getTarefas();
+  const lancs = getLancamentos();
   const hoje = new Date(); hoje.setHours(0,0,0,0);
   const ativos = procs.filter(p=>p.status==='ativo').length;
   const finalizados = procs.filter(p=>p.status==='finalizado').length;
@@ -5332,11 +5585,50 @@ function renderDashboard(){
     const d=new Date((p.data||'')+'T12:00:00'); d.setHours(0,0,0,0);
     return d<=hoje;
   }).length;
-  const receita = procs.reduce((s,p)=>s+(parseFloat(p.valorRecebido||p.valor||0)),0);
+  const receita = lancs.filter(l=>l.tipo!=='despesa'&&l.status==='recebido').reduce((s,l)=>s+(parseFloat(l.valor)||0),0);
+
+  // ── Análise por matéria ──
+  const areasCfg=[
+    {nome:'CÍVEL',     cor:'var(--blue-400)',   bg:'rgba(59,130,246,.12)'},
+    {nome:'CRIMINAL',  cor:'var(--red-400)',    bg:'rgba(239,68,68,.12)'},
+    {nome:'TRABALHISTA',cor:'var(--amber-400)', bg:'rgba(245,158,11,.12)'},
+    {nome:'FAMÍLIA',   cor:'#a855f7',           bg:'rgba(168,85,247,.12)'},
+  ];
+  const totalProcs = procs.length||1;
+  const areasData = areasCfg.map(({nome,cor,bg})=>{
+    const lista = procs.filter(p=>(p.area||'').toUpperCase()===nome);
+    const ids = new Set(lista.map(p=>p.id));
+    const rec = lancs.filter(l=>l.tipo!=='despesa'&&l.status==='recebido'&&ids.has(l.procId)).reduce((s,l)=>s+(parseFloat(l.valor)||0),0);
+    return {nome, cor, bg, count:lista.length, pct:Math.round(lista.length/totalProcs*100), rec};
+  });
+  const nomesPrincipais = new Set(areasCfg.map(a=>a.nome));
+  const outrosLista = procs.filter(p=>!nomesPrincipais.has((p.area||'').toUpperCase()));
+  if(outrosLista.length>0){
+    const ids=new Set(outrosLista.map(p=>p.id));
+    const rec=lancs.filter(l=>l.tipo!=='despesa'&&l.status==='recebido'&&ids.has(l.procId)).reduce((s,l)=>s+(parseFloat(l.valor)||0),0);
+    areasData.push({nome:'OUTROS',cor:'var(--text-muted)',bg:'rgba(100,100,100,.1)',count:outrosLista.length,pct:Math.round(outrosLista.length/totalProcs*100),rec});
+  }
+
+  // ── Taxa de êxito ──
+  const comRes = procs.filter(p=>p.resultado&&p.resultado.trim());
+  const totalRes = comRes.length||1;
+  const nProc = comRes.filter(p=>{ const r=(p.resultado||'').toUpperCase(); return r.includes('PROCEDENTE')&&!r.includes('IMPROCEDENTE'); }).length;
+  const nAcor = comRes.filter(p=>(p.resultado||'').toUpperCase().includes('ACORDO')).length;
+  const nImpr = comRes.filter(p=>(p.resultado||'').toUpperCase().includes('IMPROCEDENTE')).length;
+  const nOutr = comRes.length - nProc - nAcor - nImpr;
+  const taxaExito = comRes.length ? Math.round((nProc+nAcor)/comRes.length*100) : 0;
+  const barResultados = [
+    {label:'Procedente', n:nProc, cor:'var(--green-400)'},
+    {label:'Acordo',     n:nAcor, cor:'var(--blue-400)'},
+    {label:'Improcedente',n:nImpr,cor:'var(--red-400)'},
+    ...(nOutr>0?[{label:'Outros',n:nOutr,cor:'var(--text-muted)'}]:[]),
+  ];
+
   const el=document.getElementById('pg-dashboard');
   if(!el) return;
   el.innerHTML=`
-  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:24px">
+  <!-- Cards de resumo -->
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:16px;margin-bottom:24px">
     ${[
       {label:'Total de processos',val:procs.length,icon:'ti-files',color:'var(--gold-400)'},
       {label:'Processos ativos',val:ativos,icon:'ti-activity',color:'var(--blue-400)'},
@@ -5352,6 +5644,124 @@ function renderDashboard(){
       <div style="font-size:24px;font-weight:700;color:var(--text-primary)">${c.val}</div>
     </div>`).join('')}
   </div>
+
+  <!-- Análise por matéria + Taxa de êxito -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px">
+
+    <!-- Análise por matéria -->
+    <div class="card" style="padding:18px 20px">
+      <div style="font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:16px;display:flex;align-items:center;gap:8px">
+        <i class="ti ti-chart-pie" style="color:var(--gold-400)"></i> Processos por matéria
+      </div>
+      ${areasData.map(a=>`
+      <div style="margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px">
+          <div style="display:flex;align-items:center;gap:7px">
+            <span style="width:9px;height:9px;border-radius:50%;background:${a.cor};display:inline-block;flex-shrink:0"></span>
+            <span style="font-size:12px;font-weight:600;color:var(--text-primary)">${a.nome}</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="font-size:11px;color:var(--text-muted)">${a.count} caso${a.count!==1?'s':''}</span>
+            <span style="font-size:11px;font-weight:700;color:${a.cor};min-width:34px;text-align:right">${a.pct}%</span>
+          </div>
+        </div>
+        <div style="height:5px;background:var(--border-default);border-radius:4px;overflow:hidden">
+          <div style="height:100%;width:${a.pct}%;background:${a.cor};border-radius:4px;transition:width .4s"></div>
+        </div>
+        <div style="font-size:10.5px;color:var(--text-muted);margin-top:3px;text-align:right">${a.rec>0?formatMoney(a.rec)+' recebido':'—'}</div>
+      </div>`).join('')}
+    </div>
+
+    <!-- Taxa de êxito -->
+    <div class="card" style="padding:18px 20px">
+      <div style="font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:4px;display:flex;align-items:center;gap:8px">
+        <i class="ti ti-trophy" style="color:var(--gold-400)"></i> Taxa de êxito
+      </div>
+      <div style="font-size:11px;color:var(--text-muted);margin-bottom:16px">${comRes.length} caso${comRes.length!==1?'s':''} com resultado registrado</div>
+      ${comRes.length===0?`<div style="text-align:center;padding:24px 0;color:var(--text-muted);font-size:13px">Nenhum resultado registrado ainda.</div>`:`
+      <div style="text-align:center;margin-bottom:20px">
+        <div style="font-size:48px;font-weight:800;color:${taxaExito>=70?'var(--green-400)':taxaExito>=50?'var(--amber-400)':'var(--red-400)'};line-height:1">${taxaExito}%</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:4px">êxito (procedentes + acordos)</div>
+      </div>
+      ${barResultados.map(r=>`
+      <div style="margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+          <span style="font-size:12px;color:var(--text-primary);display:flex;align-items:center;gap:6px">
+            <span style="width:8px;height:8px;border-radius:50%;background:${r.cor};display:inline-block"></span>${r.label}
+          </span>
+          <span style="font-size:12px;font-weight:700;color:${r.cor}">${r.n} <span style="font-weight:400;color:var(--text-muted)">(${Math.round(r.n/totalRes*100)}%)</span></span>
+        </div>
+        <div style="height:5px;background:var(--border-default);border-radius:4px;overflow:hidden">
+          <div style="height:100%;width:${Math.round(r.n/totalRes*100)}%;background:${r.cor};border-radius:4px"></div>
+        </div>
+      </div>`).join('')}`}
+    </div>
+  </div>
+
+  <!-- Receita por matéria -->
+  <div class="card" style="padding:18px 20px;margin-bottom:24px">
+    <div style="font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:16px;display:flex;align-items:center;gap:8px">
+      <i class="ti ti-cash" style="color:var(--gold-400)"></i> Receita recebida por matéria
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px">
+      ${areasData.filter(a=>a.nome!=='OUTROS').concat(areasData.filter(a=>a.nome==='OUTROS')).map(a=>`
+      <div style="background:${a.bg};border:1px solid ${a.cor}33;border-radius:10px;padding:14px 16px">
+        <div style="display:flex;align-items:center;gap:7px;margin-bottom:8px">
+          <span style="width:8px;height:8px;border-radius:50%;background:${a.cor};display:inline-block;flex-shrink:0"></span>
+          <span style="font-size:11px;font-weight:700;color:${a.cor};letter-spacing:.4px">${a.nome}</span>
+        </div>
+        <div style="font-size:18px;font-weight:800;color:var(--text-primary);line-height:1.1">${a.rec>0?formatMoney(a.rec):'R$ 0,00'}</div>
+        <div style="font-size:10.5px;color:var(--text-muted);margin-top:4px">${a.count} caso${a.count!==1?'s':''} · ${a.pct}% do total</div>
+      </div>`).join('')}
+    </div>
+  </div>
+
+  <!-- Taxa de êxito por tipo de ação: Civil e Trabalhista -->
+  ${(()=>{
+    const areasExito = [
+      {nome:'CÍVEL', cor:'var(--blue-400)', bg:'rgba(59,130,246,.08)'},
+      {nome:'TRABALHISTA', cor:'var(--amber-400)', bg:'rgba(245,158,11,.08)'},
+    ];
+    return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px">
+    ${areasExito.map(({nome,cor,bg})=>{
+      const procsDaArea = procs.filter(p=>(p.area||'').toUpperCase()===nome);
+      const comResArea = procsDaArea.filter(p=>p.resultado&&p.resultado.trim());
+      // group by objeto (tipo de ação)
+      const byTipo = {};
+      comResArea.forEach(p=>{
+        const tipo = (p.objeto||'Não informado').trim() || 'Não informado';
+        if(!byTipo[tipo]) byTipo[tipo]={total:0,exito:0};
+        byTipo[tipo].total++;
+        const r=(p.resultado||'').toUpperCase();
+        const venceu = (r.includes('PROCEDENTE')&&!r.includes('IMPROCEDENTE'))||r.includes('ACORDO');
+        if(venceu) byTipo[tipo].exito++;
+      });
+      const sorted = Object.entries(byTipo).sort((a,b)=>b[1].total-a[1].total).slice(0,7);
+      return `<div class="card" style="padding:18px 20px">
+        <div style="font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:4px;display:flex;align-items:center;gap:8px">
+          <i class="ti ti-scale" style="color:${cor}"></i> Êxito por tipo — ${nome.charAt(0)+nome.slice(1).toLowerCase()}
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:14px">${comResArea.length} caso${comResArea.length!==1?'s':''} com resultado · ${procsDaArea.length} total</div>
+        ${sorted.length===0?`<div style="color:var(--text-muted);font-size:13px;padding:16px 0;text-align:center">Nenhum resultado registrado.</div>`
+        :sorted.map(([tipo,d])=>{
+          const pctExito = Math.round(d.exito/d.total*100);
+          const corBarra = pctExito>=70?'var(--green-400)':pctExito>=50?'var(--amber-400)':'var(--red-400)';
+          return `<div style="margin-bottom:12px">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
+              <span style="font-size:11.5px;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:68%" title="${tipo}">${tipo}</span>
+              <span style="font-size:11px;font-weight:700;color:${corBarra};flex-shrink:0;margin-left:6px">${pctExito}% <span style="font-weight:400;color:var(--text-muted)">(${d.exito}/${d.total})</span></span>
+            </div>
+            <div style="height:5px;background:var(--border-default);border-radius:4px;overflow:hidden">
+              <div style="height:100%;width:${pctExito}%;background:${corBarra};border-radius:4px"></div>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>`;
+    }).join('')}
+    </div>`;
+  })()}
+
+  <!-- Últimos processos + Tarefas -->
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
     <div class="card">
       <div class="card-header"><span class="card-title">Últimos processos</span></div>
@@ -5366,7 +5776,7 @@ function renderDashboard(){
             </div>
             <span class="status-dot s-${p.status||'ativo'}">${statusLabel(p.status||'ativo')}</span>
           </div>`;
-        }).join('')}
+        }).join('')||'<p style="color:var(--text-muted);font-size:13px;padding:8px 0">Nenhum processo.</p>'}
       </div>
     </div>
     <div class="card">
@@ -5521,6 +5931,7 @@ async function saveProcesso(){
     obs:document.getElementById('proc-obs').value,
     ...(isNew?{criadoEm:new Date().toISOString()}:{})
   };
+  if(isNew){ const nextId=await getNextCardId(); if(nextId) obj.cardId=nextId; }
   const list=getProcessos();
   if(id){ const i=list.findIndex(x=>x.id===id); if(i>-1) list[i]={...list[i],...obj}; }
   else list.push(obj);
@@ -5551,7 +5962,8 @@ function viewProcesso(id, isParceria=false){
   const p = procs.find(x=>x.id===id);
   if(!p) return;
   const c = clientes.find(x=>x.id===p.clienteId);
-  document.getElementById('view-proc-title').textContent = p.numero||'Processo';
+  const idBadge = p.cardId ? `<span style="font-size:11px;background:var(--gold-100,#fef3c7);color:var(--gold-600,#b45309);padding:2px 7px;border-radius:4px;margin-right:8px;font-weight:700;vertical-align:middle">${formatCardId(p.cardId)}</span>` : '';
+  document.getElementById('view-proc-title').innerHTML = idBadge + (p.numero||'Processo');
   const sub = document.getElementById('view-proc-subtitle');
   if(sub) sub.textContent = c ? c.nome : '';
   // Botão editar
@@ -6054,6 +6466,7 @@ function renderProcessos(){
     const valRec = p.valorRecebido||p.valor;
     const resBadge = p.resultado?`<span class="badge ${resBadgeClass(p.resultado)}" style="font-size:10px" title="${p.resultado}">${p.resultado.length>12?p.resultado.substring(0,12)+'…':p.resultado}</span>`:'—';
     return `<tr style="cursor:pointer" onclick="viewProcesso('${p.id}')">
+      <td style="font-size:10.5px;font-weight:700;color:var(--gold-400);white-space:nowrap;letter-spacing:.3px">${formatCardId(p.cardId)}</td>
       <td style="font-size:11.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${nome}">${nome}</td>
       <td style="font-family:monospace;font-size:10.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${p.numero}">${p.numero}</td>
       <td class="td-2">${p.tribunal||'—'}</td>
@@ -6498,6 +6911,81 @@ function confirmDeleteMain(type, id, label){
   };
 }
 
+// ── CARD ID SEQUENCIAL ──────────────────────────────────────
+function formatCardId(n){
+  if(!n) return '—';
+  return 'ID: '+String(n).padStart(4,'0');
+}
+
+async function getNextCardId(){
+  if(!FB.ready||!FB._user) return null;
+  try{
+    const result=await FB.db.ref('main/_meta/ultimoId').transaction(cur=>(cur||0)+1);
+    return result.snapshot.val();
+  }catch(e){ console.error('getNextCardId:',e); return null; }
+}
+
+async function gerarIdsManual(){
+  if(!confirm('Isso vai gerar/corrigir os IDs de todos os processos sem ID.\nProcessos que já têm ID não serão alterados.\n\nContinuar?')) return;
+  showToast('Gerando IDs...','info');
+  try{
+    if(!FB.ready){ showToast('Firebase não conectado','error'); return; }
+    if(!isAdmin()){ showToast('Permissão negada','error'); return; }
+    const snap=await FB.db.ref('main/_meta/ultimoId').once('value');
+    let counter=snap.val()||0;
+    const processosSemId=[...getProcessos()].filter(p=>!p.cardId).sort((a,b)=>new Date(a.criadoEm||'2000')-new Date(b.criadoEm||'2000'));
+    const parSemId=[...getParProcessos()].filter(p=>!p.cardId).sort((a,b)=>new Date(a.criadoEm||'2000')-new Date(b.criadoEm||'2000'));
+    let atribuidos=0;
+    if(processosSemId.length>0){
+      const allProcs=getProcessos();
+      processosSemId.forEach(p=>{ counter++; atribuidos++; const i=allProcs.findIndex(x=>x.id===p.id); if(i>-1) allProcs[i].cardId=counter; });
+      FB.stopListen('main_processos');
+      await saveProcessos(allProcs);
+    }
+    if(parSemId.length>0){
+      const allPar=getParProcessos();
+      parSemId.forEach(p=>{ counter++; atribuidos++; const i=allPar.findIndex(x=>x.id===p.id); if(i>-1) allPar[i].cardId=counter; });
+      FB.stopListen('parcerias_processos');
+      await saveParProcessos(allPar);
+    }
+    await FB.db.ref('main/_meta/ultimoId').set(counter);
+    setTimeout(()=>{ DataStore.startListeners(); ParStore.startListeners(); renderProcessos(); },2500);
+    if(atribuidos>0) showToast('IDs gerados: '+atribuidos+' processos','success');
+    else showToast('Todos os processos já têm ID','success');
+  }catch(e){
+    console.error('gerarIdsManual:',e);
+    showToast('Erro: '+e.message,'error');
+  }
+}
+
+async function inicializarCardIds(force=false){
+  if(!FB.ready||!isAdmin()) return;
+  try{
+    const snap=await FB.db.ref('main/_meta/ultimoId').once('value');
+    if(snap.val()!==null && !force) return;
+    let counter=snap.val()||0;
+    const processosSemId=[...getProcessos()].filter(p=>!p.cardId).sort((a,b)=>new Date(a.criadoEm||'2000')-new Date(b.criadoEm||'2000'));
+    const parSemId=[...getParProcessos()].filter(p=>!p.cardId).sort((a,b)=>new Date(a.criadoEm||'2000')-new Date(b.criadoEm||'2000'));
+    let atribuidos=0;
+    if(processosSemId.length>0){
+      const allProcs=getProcessos();
+      processosSemId.forEach(p=>{ counter++; atribuidos++; const i=allProcs.findIndex(x=>x.id===p.id); if(i>-1) allProcs[i].cardId=counter; });
+      FB.stopListen('main_processos');
+      await saveProcessos(allProcs);
+    }
+    if(parSemId.length>0){
+      const allPar=getParProcessos();
+      parSemId.forEach(p=>{ counter++; atribuidos++; const i=allPar.findIndex(x=>x.id===p.id); if(i>-1) allPar[i].cardId=counter; });
+      FB.stopListen('parcerias_processos');
+      await saveParProcessos(allPar);
+    }
+    await FB.db.ref('main/_meta/ultimoId').set(counter);
+    setTimeout(()=>{ DataStore.startListeners(); ParStore.startListeners(); renderProcessos(); },2500);
+    if(atribuidos>0) showToast('IDs gerados: '+atribuidos+' processos','success');
+  }catch(e){ console.error('inicializarCardIds:',e); }
+}
+// ────────────────────────────────────────────────────────────
+
 async function deleteMainRecord(type, id, label){
   // Lançamento financeiro — lógica própria
   if(type==='lancamento'){
@@ -6793,7 +7281,10 @@ async function renderBackupList(){
   el.innerHTML=`<div class="table-wrap">
     <div class="table-toolbar">
       <span class="card-title">Backups disponíveis (${backups.length})</span>
-      <button class="btn btn-primary btn-sm" onclick="fazerBackupManual()"><i class="ti ti-database-export"></i> Fazer backup agora</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-sm" onclick="gerarIdsManual()" style="border:1px solid var(--gold-400);color:var(--gold-400);background:transparent"><i class="ti ti-hash"></i> Gerar/Corrigir IDs</button>
+        <button class="btn btn-primary btn-sm" onclick="fazerBackupManual()"><i class="ti ti-database-export"></i> Fazer backup agora</button>
+      </div>
     </div>
     ${backups.length?`<table><thead><tr><th>DATA</th><th>HORA</th><th>TIPO</th><th>CRIADO POR</th><th>AÇÃO</th></tr></thead>
     <tbody>${backups.map(b=>`<tr>
