@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <!-- saved from url=(0068)file:///C:/Users/MAYCOM/Downloads/MJ_Advogados_Sistema_Drive_23.html -->
 <html lang="pt-BR"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
@@ -7,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com/">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/firebase@10.12.2/firebase-app-compat.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/firebase@10.12.2/firebase-database-compat.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/firebase@10.12.2/firebase-auth-compat.min.js"></script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
@@ -250,6 +252,8 @@ html,body{
 }
 .btn-primary i{color:var(--navy-950)}
 
+/* estagiária: esconde todos os botões de excluir */
+body.role-estagiaria [title="Excluir"]{display:none!important}
 .btn-danger{background:var(--red-bg);color:var(--red-400);border-color:var(--red-border)}
 .btn-danger:hover{background:rgba(239,68,68,0.15)}
 .btn-sm{padding:4px 9px;font-size:11.5px}
@@ -770,6 +774,7 @@ textarea.form-control{resize:vertical;min-height:72px}
       <div class="nav-sec" id="nav-sec-seguranca" style="display: none;">
         <div class="nav-sec-label">Administração</div>
         <div class="nav-item" id="nav-seguranca" onclick="navigate(&#39;seguranca&#39;)" style="display: none;"><i class="ti ti-shield-lock"></i> Segurança</div>
+        <div class="nav-item" id="nav-importar-aasp" onclick="abrirImportacaoAASP()" style="display: none;"><i class="ti ti-file-import"></i> Importar Publicações</div>
       </div>
     </div>
     <div class="sidebar-footer">
@@ -3956,8 +3961,7 @@ textarea.form-control{resize:vertical;min-height:72px}
           <select class="form-control" id="tarefa-resp">
             <option value="">Selecione</option>
             <option value="Maycon Jordan">Maycon Jordan</option>
-            <option value="Lucas Almeida">Lucas Almeida</option>
-            <option value="Eduarda Tofoli">Eduarda Tofoli</option>
+            <option value="Deicy de Souza">Deicy de Souza</option>
           </select>
         </div>
       </div>
@@ -4611,7 +4615,8 @@ const saveParAgenda    = arr=>ParStore.saveAgenda(arr);
 // ============================================================
 let CURRENT_USER = null;
 
-function isAdmin()   { return FB.getRole() === 'admin'; }
+function isAdmin()      { return FB.getRole() === 'admin'; }
+function isEstagiaria() { return FB.getRole() === 'estagiaria'; }
 function isParceiro(){ return FB.getRole() === 'parceiro'; }
 
 async function doLogin(){
@@ -4669,6 +4674,7 @@ async function doLogout(){
 function navigate(page){
   // Bloqueio real — parceiro só acessa parcerias
   if(isParceiro() && page !== 'parcerias') page = 'parcerias';
+  if(isEstagiaria() && page === 'seguranca') page = 'dashboard';
   // Admin não logado não acessa nada
   if(!FB.getRole()) return;
   currentPage = page;
@@ -4728,17 +4734,25 @@ function initApp(){
   if(isAdmin()) setTimeout(checkBackupDiario, 3000);
   // IDs sequenciais — inicializa uma única vez se ainda não existirem
   if(isAdmin()) setTimeout(inicializarCardIds, 4000);
-  if(isAdmin()) navigate('dashboard');
+  if(isAdmin()||isEstagiaria()) navigate('dashboard');
   else navigate('parcerias');
 }
 
 function applyRoleUI(){
-  const adminOnly=['nav-dashboard','nav-clientes','nav-processos','nav-movimentacoes',
-    'nav-financeiro','nav-tarefas','nav-prazos','nav-documentos','nav-agenda','nav-seguranca','nav-sec-seguranca',
-    'nav-sec-principal','nav-sec-controle','nav-sec-sistema'];
-  adminOnly.forEach(id=>{
+  // somente admin vê Segurança
+  const adminOnlyIds=['nav-seguranca'];
+  adminOnlyIds.forEach(id=>{
     const el=document.getElementById(id);
     if(el) el.style.display=isAdmin()?'':'none';
+  });
+  // admin e estagiária veem todas as seções principais
+  const staffIds=['nav-dashboard','nav-clientes','nav-processos','nav-movimentacoes',
+    'nav-financeiro','nav-tarefas','nav-prazos','nav-documentos','nav-agenda',
+    'nav-importar-aasp','nav-sec-seguranca',
+    'nav-sec-principal','nav-sec-controle','nav-sec-sistema'];
+  staffIds.forEach(id=>{
+    const el=document.getElementById(id);
+    if(el) el.style.display=(isAdmin()||isEstagiaria())?'':'none';
   });
   const navPar=document.getElementById('nav-parcerias');
   if(navPar) navPar.style.display='';
@@ -4746,6 +4760,8 @@ function applyRoleUI(){
     const btn=document.getElementById('topbar-action-btn');
     if(btn) btn.style.display='none';
   }
+  // classe no body para CSS de permissões por role
+  document.body.classList.toggle('role-estagiaria', isEstagiaria());
 }
 
 // Sub-tab atual de parcerias
@@ -4874,6 +4890,12 @@ function renderParDashboard(){
       <div style="font-size:24px;font-weight:700;color:var(--text-primary)">${c.val}</div>
     </div>`).join('')}
   </div>
+
+  <!-- Alerta casos parados Parcerias -->
+  ${renderSecaoAlerta(
+    calcAlertaParados(procs.filter(p=>p.status==='ativo'), tarefas, getParMovs()),
+    clientes, true
+  )}
 
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px">
     <div class="card" style="padding:18px 20px">
@@ -5265,7 +5287,7 @@ function openParTarefaModal(id=null){
 
 function buildParTarefaModal(){
   const div=document.createElement('div');div.id='modal-par-tarefa';div.className='modal-overlay hidden';
-  div.innerHTML=`<div class="modal"><div class="modal-header"><span class="modal-title">Tarefa</span><button class="btn btn-icon btn-ghost" onclick="closeModal('modal-par-tarefa')"><i class="ti ti-x"></i></button></div><div class="modal-body"><input type="hidden" id="par-tar-id"><div class="form-grid"><div class="form-group form-full"><label class="form-label">Título *</label><input class="form-control" id="par-tar-titulo" placeholder="Descreva a tarefa"></div><div class="form-group"><label class="form-label">Prioridade</label><select class="form-control" id="par-tar-prio"><option value="baixa">Baixa</option><option value="media" selected>Média</option><option value="alta">Alta</option><option value="urgente">Urgente</option></select></div><div class="form-group"><label class="form-label">Data limite</label><input class="form-control" id="par-tar-data" type="date"></div><div class="form-group"><label class="form-label">Responsável</label><select class="form-control" id="par-tar-resp"><option value="">Selecione</option><option value="Maycon Jordan">Maycon Jordan</option><option value="Lucas Almeida">Lucas Almeida</option><option value="Eduarda Tofoli">Eduarda Tofoli</option></select></div><div class="form-group"><label class="form-label">Processo vinculado</label><select class="form-control" id="par-tar-proc"></select></div><div class="form-group form-full"><label class="form-label">Descrição</label><textarea class="form-control" id="par-tar-desc" rows="3"></textarea></div></div></div><div class="modal-footer"><button class="btn" onclick="closeModal('modal-par-tarefa')">Cancelar</button><button class="btn btn-primary" onclick="saveParTarefa()"><i class="ti ti-check"></i> Salvar</button></div></div>`;
+  div.innerHTML=`<div class="modal"><div class="modal-header"><span class="modal-title">Tarefa</span><button class="btn btn-icon btn-ghost" onclick="closeModal('modal-par-tarefa')"><i class="ti ti-x"></i></button></div><div class="modal-body"><input type="hidden" id="par-tar-id"><div class="form-grid"><div class="form-group form-full"><label class="form-label">Título *</label><input class="form-control" id="par-tar-titulo" placeholder="Descreva a tarefa"></div><div class="form-group"><label class="form-label">Prioridade</label><select class="form-control" id="par-tar-prio"><option value="baixa">Baixa</option><option value="media" selected>Média</option><option value="alta">Alta</option><option value="urgente">Urgente</option></select></div><div class="form-group"><label class="form-label">Data limite</label><input class="form-control" id="par-tar-data" type="date"></div><div class="form-group"><label class="form-label">Responsável</label><select class="form-control" id="par-tar-resp"><option value="">Selecione</option><option value="Maycon Jordan">Maycon Jordan</option><option value="Lucas Magalhães">Lucas Magalhães</option><option value="Eduarda Tofoli">Eduarda Tofoli</option><option value="Deicy de Souza">Deicy de Souza</option></select></div><div class="form-group"><label class="form-label">Processo vinculado</label><select class="form-control" id="par-tar-proc"></select></div><div class="form-group form-full"><label class="form-label">Descrição</label><textarea class="form-control" id="par-tar-desc" rows="3"></textarea></div></div></div><div class="modal-footer"><button class="btn" onclick="closeModal('modal-par-tarefa')">Cancelar</button><button class="btn btn-primary" onclick="saveParTarefa()"><i class="ti ti-check"></i> Salvar</button></div></div>`;
   document.body.appendChild(div);
 }
 
@@ -5298,6 +5320,9 @@ function renderParTarefas(){
 
 async function concluirParTarefa(id){
   const list=getParTarefas();const i=list.findIndex(x=>x.id===id);
+  if(isEstagiaria() && i>-1 && list[i].resp !== FB.getNome()){
+    showToast('Você só pode concluir tarefas atribuídas a você.','error'); return;
+  }
   if(i>-1){list[i].status='concluida';list[i].concluidaEm=new Date().toISOString();}
   await saveParTarefas(list);renderParTarefas();showToast('Tarefa concluída!','success');
 }
@@ -5644,6 +5669,12 @@ function renderDashboard(){
       <div style="font-size:24px;font-weight:700;color:var(--text-primary)">${c.val}</div>
     </div>`).join('')}
   </div>
+
+  <!-- Alerta casos parados -->
+  ${renderSecaoAlerta(
+    calcAlertaParados(procs.filter(p=>p.status==='ativo'), tarefas, getMovs()),
+    clientes, false
+  )}
 
   <!-- Análise por matéria + Taxa de êxito -->
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px">
@@ -6188,7 +6219,7 @@ function renderViewTarefas(){
       </div>
       <div class="form-group form-full">
         <label class="form-label">Responsável</label>
-        <input class="form-control" id="nt-resp" placeholder="Nome do responsável">
+        <div id="nt-resp-container"><input class="form-control" id="nt-resp" placeholder="Nome do responsável"></div>
       </div>
       <div class="form-group form-full">
         <label class="form-label">Descrição</label>
@@ -6204,7 +6235,17 @@ function renderViewTarefas(){
 
 function openNovaTarefaProc(){
   const form = document.getElementById('form-nova-tar');
-  if(form){ form.classList.remove('hidden'); form.scrollIntoView({behavior:'smooth'}); }
+  if(!form) return;
+  const respContainer = document.getElementById('nt-resp-container');
+  if(respContainer){
+    if(_viewIsParc){
+      respContainer.innerHTML=`<select class="form-control" id="nt-resp"><option value="">Selecione</option><option value="Maycon Jordan">Maycon Jordan</option><option value="Lucas Magalhães">Lucas Magalhães</option><option value="Eduarda Tofoli">Eduarda Tofoli</option><option value="Deicy de Souza">Deicy de Souza</option></select>`;
+    } else {
+      respContainer.innerHTML=`<select class="form-control" id="nt-resp"><option value="">Selecione</option><option value="Maycon Jordan">Maycon Jordan</option><option value="Deicy de Souza">Deicy de Souza</option></select>`;
+    }
+  }
+  form.classList.remove('hidden');
+  form.scrollIntoView({behavior:'smooth'});
 }
 
 async function salvarNovaTarefaProc(){
@@ -6230,10 +6271,16 @@ async function salvarNovaTarefaProc(){
 async function concluirTarefaProc(id){
   if(_viewIsParc){
     const list=getParTarefas(); const i=list.findIndex(x=>x.id===id);
+    if(isEstagiaria() && i>-1 && list[i].resp !== FB.getNome()){
+      showToast('Você só pode concluir tarefas atribuídas a você.','error'); return;
+    }
     if(i>-1){list[i].status='concluida';list[i].concluidaEm=new Date().toISOString();}
     await saveParTarefas(list);
   } else {
     const list=getTarefas(); const i=list.findIndex(x=>x.id===id);
+    if(isEstagiaria() && i>-1 && list[i].resp !== FB.getNome()){
+      showToast('Você só pode concluir tarefas atribuídas a você.','error'); return;
+    }
     if(i>-1){list[i].status='concluida';list[i].concluidaEm=new Date().toISOString();}
     await saveTarefas(list);
   }
@@ -6659,6 +6706,9 @@ async function saveTarefa(){
 async function concluirTarefa(id){
   const list=getTarefas();
   const i=list.findIndex(x=>x.id===id);
+  if(isEstagiaria() && i>-1 && list[i].resp !== FB.getNome()){
+    showToast('Você só pode concluir tarefas atribuídas a você.','error'); return;
+  }
   if(i>-1){ list[i].status='concluida'; list[i].concluidaEm=new Date().toISOString(); }
   await saveTarefas(list);
   logAudit('Concluiu tarefa','Tarefas',list[i]?.titulo||'','pendente','concluida');
@@ -7282,6 +7332,7 @@ async function renderBackupList(){
     <div class="table-toolbar">
       <span class="card-title">Backups disponíveis (${backups.length})</span>
       <div style="display:flex;gap:8px">
+        <button class="btn btn-sm" onclick="abrirImportacaoAASP()" style="border:1px solid var(--blue-400);color:var(--blue-400);background:transparent"><i class="ti ti-file-import"></i> Importar Publicações AASP</button>
         <button class="btn btn-sm" onclick="gerarIdsManual()" style="border:1px solid var(--gold-400);color:var(--gold-400);background:transparent"><i class="ti ti-hash"></i> Gerar/Corrigir IDs</button>
         <button class="btn btn-primary btn-sm" onclick="fazerBackupManual()"><i class="ti ti-database-export"></i> Fazer backup agora</button>
       </div>
@@ -7301,6 +7352,241 @@ async function renderBackupList(){
   </div>`;
 }
 
+// ── IMPORTAÇÃO AASP ─────────────────────────────────────────
+
+function proximoDiaUtil(dataBase){
+  const d=new Date(dataBase);
+  d.setDate(d.getDate()+1);
+  const dow=d.getDay();
+  if(dow===6) d.setDate(d.getDate()+2);
+  else if(dow===0) d.setDate(d.getDate()+1);
+  return d.toISOString().slice(0,10);
+}
+
+function detectarPrioridadeAASP(texto){
+  const t=(texto||'').toUpperCase();
+  if(/SENTEN[CÇ]A|ACÓ?RDÃO|TRANSITOU EM JULGADO|PENHORA|BLOQUEIO|ARRESTO|LIMINAR/.test(t)) return 'urgente';
+  if(/PRAZO|AUDI[EÊ]NCIA|JULGAMENTO|PER[IÍ]CIA|DEPOIMENTO/.test(t)) return 'alta';
+  return 'media';
+}
+
+function normalizarNumProc(n){
+  return (n||'').replace(/[^\d]/g,'');
+}
+
+function buscarProcPorNumero(numero){
+  const norm=normalizarNumProc(numero);
+  const p=getProcessos().find(x=>normalizarNumProc(x.numero)===norm);
+  if(p) return {proc:p,isPar:false};
+  const par=getParProcessos().find(x=>normalizarNumProc(x.numero)===norm);
+  if(par) return {proc:par,isPar:true};
+  return null;
+}
+
+function getRespAASP(isPar,area){
+  if(!isPar) return 'Maycon Jordan';
+  const a=(area||'').toUpperCase();
+  if(a.includes('TRABALHISTA')) return 'Lucas Magalhães';
+  if(a.includes('FAMIL')) return 'Eduarda Tofoli';
+  return 'Maycon Jordan';
+}
+
+const AASP_KEY='aasp_importados_v1';
+function getAASPImportados(){ try{ return JSON.parse(localStorage.getItem(AASP_KEY)||'[]'); }catch{ return []; } }
+function jaImportadoAASP(pub,processo){ return getAASPImportados().includes(`${pub}|${normalizarNumProc(processo)}`); }
+function marcarImportadosAASP(chaves){
+  const ex=getAASPImportados();
+  localStorage.setItem(AASP_KEY,JSON.stringify([...new Set([...ex,...chaves])]));
+}
+
+function abrirImportacaoAASP(){
+  let inp=document.getElementById('aasp-file-input');
+  if(!inp){
+    inp=document.createElement('input');
+    inp.type='file'; inp.id='aasp-file-input'; inp.accept='.xlsx,.xls'; inp.style.display='none';
+    inp.onchange=e=>{ if(e.target.files[0]) processarArquivoAASP(e.target.files[0]); inp.value=''; };
+    document.body.appendChild(inp);
+  }
+  inp.click();
+}
+
+function processarArquivoAASP(file){
+  if(typeof XLSX==='undefined'){ showToast('Biblioteca não carregada. Recarregue a página.','error'); return; }
+  showToast('Lendo arquivo...','');
+  const reader=new FileReader();
+  reader.onload=e=>{
+    try{
+      const wb=XLSX.read(e.target.result,{type:'array'});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+      if(rows.length<2){ showToast('Arquivo sem dados','error'); return; }
+      const header=rows[0].map(h=>(h||'').toString().trim());
+      const iProc=header.indexOf('Processo');
+      const iInti=header.indexOf('Intimação');
+      const iPub=header.indexOf('Pub');
+      const iData=header.indexOf('Data');
+      if(iProc===-1){ showToast('Coluna "Processo" não encontrada no arquivo','error'); return; }
+      const encontrados=[], naoEncontrados=[], duplicados=[];
+      rows.slice(1).forEach(row=>{
+        const processo=(row[iProc]||'').toString().trim();
+        const intimacao=(row[iInti]||'').toString().trim();
+        const pub=(row[iPub]||'').toString().trim();
+        const data=(row[iData]||'').toString().trim();
+        if(!processo) return;
+        if(jaImportadoAASP(pub,processo)){ duplicados.push({processo}); return; }
+        const match=buscarProcPorNumero(processo);
+        const linhas=intimacao.split('\n').map(l=>l.trim()).filter(l=>l&&l.length>5);
+        const resumo=linhas.slice(0,8).join('\n');
+        if(match){
+          const {proc,isPar}=match;
+          const cli=isPar?(getParClientes().find(c=>c.id===proc.clienteId)?.nome||'—'):(getClientes().find(c=>c.id===proc.clienteId)?.nome||'—');
+          encontrados.push({
+            processo, pub, resumo, proc, isPar,
+            cliente:cli,
+            prioridade:detectarPrioridadeAASP(intimacao),
+            resp:getRespAASP(isPar,proc.area),
+            dataLimite:proximoDiaUtil(new Date()),
+            data,
+            chave:`${pub}|${normalizarNumProc(processo)}`
+          });
+        } else {
+          naoEncontrados.push({processo,resumo:linhas.slice(0,3).join('\n'),data});
+        }
+      });
+      mostrarPreviewAASP(encontrados,naoEncontrados,duplicados);
+    }catch(err){
+      console.error('Erro AASP:',err);
+      showToast('Erro ao ler arquivo: '+err.message,'error');
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function mostrarPreviewAASP(encontrados,naoEncontrados,duplicados){
+  let modal=document.getElementById('modal-aasp-preview');
+  if(!modal){
+    modal=document.createElement('div');
+    modal.id='modal-aasp-preview';
+    modal.className='modal-overlay hidden';
+    document.body.appendChild(modal);
+  }
+  const prioBadge={urgente:'b-red',alta:'b-amber',media:'b-blue',baixa:'b-gray'};
+  const prioLabel={urgente:'🔴 Urgente',alta:'🟠 Alta',media:'🔵 Média',baixa:'⚪ Baixa'};
+  modal.innerHTML=`<div class="modal modal-lg" style="max-width:880px;max-height:90vh;display:flex;flex-direction:column">
+    <div class="modal-header" style="flex-shrink:0">
+      <span class="modal-title"><i class="ti ti-file-import" style="color:var(--blue-400);margin-right:6px"></i>Importação AASP — Revisão</span>
+      <button class="btn btn-icon btn-ghost" onclick="document.getElementById('modal-aasp-preview').classList.add('hidden')"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="modal-body" style="overflow-y:auto;flex:1">
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px">
+        <div style="background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.3);border-radius:8px;padding:14px;text-align:center">
+          <div style="font-size:32px;font-weight:800;color:var(--green-400)">${encontrados.length}</div>
+          <div style="font-size:12px;font-weight:600;color:var(--green-400)">Encontrados</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Tarefas serão criadas</div>
+        </div>
+        <div style="background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);border-radius:8px;padding:14px;text-align:center">
+          <div style="font-size:32px;font-weight:800;color:var(--amber-400)">${naoEncontrados.length}</div>
+          <div style="font-size:12px;font-weight:600;color:var(--amber-400)">Não encontrados</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Verificar manualmente</div>
+        </div>
+        <div style="background:rgba(100,116,139,.1);border:1px solid rgba(100,116,139,.3);border-radius:8px;padding:14px;text-align:center">
+          <div style="font-size:32px;font-weight:800;color:var(--text-muted)">${duplicados.length}</div>
+          <div style="font-size:12px;font-weight:600;color:var(--text-muted)">Já importados</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Serão ignorados</div>
+        </div>
+      </div>
+      ${encontrados.length?`
+      <div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--text-primary)">
+        <i class="ti ti-check" style="color:var(--green-400)"></i> Tarefas a criar (${encontrados.length})
+      </div>
+      <div style="border:1px solid var(--border-default);border-radius:8px;overflow:hidden;margin-bottom:20px">
+        <table style="width:100%"><thead><tr style="background:var(--navy-800)">
+          <th style="padding:8px 12px;font-size:11px;text-align:left">CLIENTE</th>
+          <th style="padding:8px 12px;font-size:11px;text-align:left">PROCESSO</th>
+          <th style="padding:8px 12px;font-size:11px;text-align:left">ABA</th>
+          <th style="padding:8px 12px;font-size:11px;text-align:left">RESPONSÁVEL</th>
+          <th style="padding:8px 12px;font-size:11px;text-align:left">PRIORIDADE</th>
+        </tr></thead><tbody>
+          ${encontrados.map((r,i)=>`<tr style="border-top:1px solid var(--border-subtle)">
+            <td style="padding:8px 12px;font-size:12px;font-weight:600">${r.cliente}</td>
+            <td style="padding:8px 12px;font-size:10.5px;font-family:monospace;color:var(--text-secondary)">${r.processo.substring(0,28)}</td>
+            <td style="padding:8px 12px"><span class="badge ${r.isPar?'b-blue':'b-amber'}" style="font-size:10px">${r.isPar?'Parcerias':'Principal'}</span></td>
+            <td style="padding:8px 12px;font-size:12px">${r.resp}</td>
+            <td style="padding:8px 12px"><span class="badge ${prioBadge[r.prioridade]}" style="font-size:10px">${prioLabel[r.prioridade]}</span></td>
+          </tr>`).join('')}
+        </tbody></table>
+      </div>`:''}
+      ${naoEncontrados.length?`
+      <div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--text-primary)">
+        <i class="ti ti-alert-triangle" style="color:var(--amber-400)"></i> Não encontrados no sistema (${naoEncontrados.length})
+      </div>
+      <div style="border:1px solid var(--border-default);border-radius:8px;overflow:hidden;margin-bottom:8px">
+        <table style="width:100%"><thead><tr style="background:var(--navy-800)">
+          <th style="padding:8px 12px;font-size:11px;text-align:left">PROCESSO</th>
+          <th style="padding:8px 12px;font-size:11px;text-align:left">DATA</th>
+          <th style="padding:8px 12px;font-size:11px;text-align:left">TEOR RESUMIDO</th>
+        </tr></thead><tbody>
+          ${naoEncontrados.map(r=>`<tr style="border-top:1px solid var(--border-subtle)">
+            <td style="padding:8px 12px;font-size:11px;font-family:monospace;color:var(--amber-400);white-space:nowrap">${r.processo}</td>
+            <td style="padding:8px 12px;font-size:11px;color:var(--text-muted);white-space:nowrap">${r.data}</td>
+            <td style="padding:8px 12px;font-size:11px;color:var(--text-secondary);white-space:pre-line">${r.resumo.substring(0,200)}${r.resumo.length>200?'…':''}</td>
+          </tr>`).join('')}
+        </tbody></table>
+      </div>
+      <div style="font-size:11px;color:var(--text-muted);margin-bottom:16px">⚠️ Os processos acima não foram encontrados no sistema. Verifique se o número está cadastrado corretamente.</div>`:''}
+    </div>
+    <div class="modal-footer" style="flex-shrink:0">
+      <button class="btn" onclick="document.getElementById('modal-aasp-preview').classList.add('hidden')">Cancelar</button>
+      ${encontrados.length?`<button class="btn btn-primary" onclick="confirmarImportacaoAASP()"><i class="ti ti-check"></i> Confirmar e criar ${encontrados.length} tarefa${encontrados.length>1?'s':''}</button>`:'<span style="font-size:13px;color:var(--text-muted)">Nenhuma tarefa a criar.</span>'}
+    </div>
+  </div>`;
+  window._aaspPendente=encontrados;
+  modal.classList.remove('hidden');
+}
+
+async function confirmarImportacaoAASP(){
+  const pendente=window._aaspPendente||[];
+  if(!pendente.length) return;
+  showToast('Criando tarefas...','');
+  try{
+    const principais=pendente.filter(r=>!r.isPar);
+    const parceiros=pendente.filter(r=>r.isPar);
+    if(principais.length){
+      if(FB.ready) FB.stopListen('main_tarefas');
+      const lista=getTarefas();
+      principais.forEach(r=>lista.push({
+        id:uid(), titulo:`Publicação AASP — ${r.data} — ${r.proc.numero.substring(0,20)}`,
+        desc:r.resumo, procId:r.proc.id, prioridade:r.prioridade, resp:r.resp,
+        data:r.dataLimite, status:'pendente', criadoEm:new Date().toISOString(), origem:'aasp'
+      }));
+      await saveTarefas(lista);
+      setTimeout(()=>DataStore.startListeners(),2000);
+    }
+    if(parceiros.length){
+      if(FB.ready) FB.stopListen('parcerias_tarefas');
+      const lista=getParTarefas();
+      parceiros.forEach(r=>lista.push({
+        id:uid(), titulo:`Publicação AASP — ${r.data} — ${r.proc.numero.substring(0,20)}`,
+        desc:r.resumo, procId:r.proc.id, prioridade:r.prioridade, resp:r.resp,
+        data:r.dataLimite, status:'pendente', criadoEm:new Date().toISOString(), origem:'aasp'
+      }));
+      await saveParTarefas(lista);
+      setTimeout(()=>ParStore.startListeners(),2000);
+    }
+    marcarImportadosAASP(pendente.map(r=>r.chave));
+    document.getElementById('modal-aasp-preview').classList.add('hidden');
+    window._aaspPendente=[];
+    updateBadges();
+    if(typeof renderTarefas==='function') renderTarefas();
+    logAudit('Importação AASP','Tarefas',`${pendente.length} publicações importadas`,'','');
+    showToast(`${pendente.length} tarefa${pendente.length>1?'s criadas':' criada'} com sucesso!`,'success');
+  }catch(err){
+    console.error('Erro confirmarImportacaoAASP:',err);
+    showToast('Erro ao criar tarefas: '+err.message,'error');
+  }
+}
+
+// ────────────────────────────────────────────────────────────
 async function fazerBackupManual(){
   showToast('Criando backup...','');
   const id=await criarBackup('manual');
@@ -7328,6 +7614,100 @@ function confirmarRestauracao(backupId, label){
 // ============================================================
 // MÓDULO FINANCEIRO
 // ============================================================
+
+// ── ALERTA CASOS PARADOS ────────────────────────────────────
+const MARCO_ALERTA = '2026-07-31';
+
+function calcAlertaParados(procsAtivos, tarefas, movs){
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+  const marco = new Date(MARCO_ALERTA+'T00:00:00');
+  return procsAtivos.map(p=>{
+    // Última atividade após o marco
+    const datas = [];
+    tarefas.filter(t=>t.procId===p.id&&t.criadoEm&&t.criadoEm>=MARCO_ALERTA).forEach(t=>datas.push(new Date(t.criadoEm)));
+    movs.filter(m=>m.procId===p.id&&m.criadoEm&&m.criadoEm>=MARCO_ALERTA).forEach(m=>datas.push(new Date(m.criadoEm)));
+    const ultimaAtiv = datas.length ? new Date(Math.max(...datas)) : null;
+    const ref = ultimaAtiv ? ultimaAtiv : marco;
+    ref.setHours(0,0,0,0);
+    const dias = Math.floor((hoje-ref)/(1000*60*60*24));
+    return {...p, diasParado:dias, ultimaAtiv};
+  }).filter(p=>p.diasParado>=30).sort((a,b)=>b.diasParado-a.diasParado);
+}
+
+function renderSecaoAlerta(casos, clientes, isPar){
+  if(!casos.length) return '';
+  const idSecao = isPar ? 'alerta-par' : 'alerta-principal';
+  const collapsed = localStorage.getItem(idSecao+'-collapsed')==='1';
+  return `<div style="border:1px solid rgba(245,158,11,.35);border-radius:10px;background:rgba(245,158,11,.06);margin-bottom:24px;overflow:hidden">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;cursor:pointer" onclick="toggleAlerta('${idSecao}')">
+      <div style="display:flex;align-items:center;gap:10px">
+        <i class="ti ti-alert-triangle" style="font-size:18px;color:var(--amber-400)"></i>
+        <span style="font-size:13px;font-weight:600;color:var(--amber-400)">Casos sem movimentação há mais de 30 dias (${casos.length})</span>
+      </div>
+      <i class="ti ti-chevron-${collapsed?'down':'up'}" id="${idSecao}-icon" style="color:var(--amber-400);font-size:14px"></i>
+    </div>
+    <div id="${idSecao}-body" style="display:${collapsed?'none':'block'}">
+      <div style="border-top:1px solid rgba(245,158,11,.2)">
+        ${casos.map((p,i)=>{
+          const c=clientes.find(x=>x.id===p.clienteId);
+          const cor=p.diasParado>45?'var(--red-400)':'var(--amber-400)';
+          const emoji=p.diasParado>45?'🔴':'🟠';
+          return `<div style="display:grid;grid-template-columns:1fr auto;align-items:center;gap:12px;padding:10px 16px;${i>0?'border-top:1px solid rgba(245,158,11,.1)':''}">
+            <div style="display:flex;align-items:center;gap:10px;min-width:0">
+              <span style="font-size:15px;flex-shrink:0">${emoji}</span>
+              <div style="min-width:0">
+                <div style="font-size:13px;font-weight:600;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer" onclick="viewProcesso('${p.id}'${isPar?',true':''})">${c?c.nome:'—'}</div>
+                <div style="display:flex;align-items:center;gap:8px;margin-top:2px;flex-wrap:wrap">
+                  ${p.cardId?`<span style="font-size:10px;color:var(--gold-400);font-weight:700">${formatCardId(p.cardId)}</span>`:''}
+                  ${p.area?`<span style="font-size:10px;color:var(--text-muted)">${p.area}</span>`:''}
+                  <span style="font-size:10px;font-weight:700;color:${cor}">${p.diasParado} dias parado</span>
+                </div>
+              </div>
+            </div>
+            <div style="display:flex;gap:6px;flex-shrink:0">
+              <button onclick="${isPar?`abrirMovAlertaPar('${p.id}')`:`abrirMovAlertaPrincipal('${p.id}')`}" style="padding:5px 10px;font-size:11px;border:1px solid var(--border-default);border-radius:var(--r);background:transparent;cursor:pointer;color:var(--text-secondary);white-space:nowrap"><i class="ti ti-plus" style="font-size:11px"></i> Movimentação</button>
+              <button onclick="${isPar?`abrirTarefaAlertaPar('${p.id}')`:`abrirTarefaAlertaPrincipal('${p.id}')`}" style="padding:5px 10px;font-size:11px;border:1px solid var(--gold-400);border-radius:var(--r);background:transparent;cursor:pointer;color:var(--gold-400);white-space:nowrap"><i class="ti ti-checkbox" style="font-size:11px"></i> Tarefa</button>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
+  </div>`;
+}
+
+function toggleAlerta(id){
+  const body=document.getElementById(id+'-body');
+  const icon=document.getElementById(id+'-icon');
+  if(!body) return;
+  const collapsed=body.style.display==='none';
+  body.style.display=collapsed?'block':'none';
+  if(icon){ icon.className='ti ti-chevron-'+(collapsed?'up':'down'); }
+  localStorage.setItem(id+'-collapsed', collapsed?'0':'1');
+}
+
+function abrirMovAlertaPrincipal(procId){
+  openMovModal();
+  setTimeout(()=>{ const s=document.getElementById('mov-proc'); if(s) s.value=procId; },80);
+}
+function abrirTarefaAlertaPrincipal(procId){
+  openTarefaModal();
+  setTimeout(()=>{ const s=document.getElementById('tarefa-proc'); if(s) s.value=procId; },80);
+}
+function abrirMovAlertaPar(procId){
+  navigate('parcerias');
+  setTimeout(()=>{
+    setParTab('movimentacoes', document.querySelector('#par-chips .chip:nth-child(7)'));
+    setTimeout(()=>{ openParMovModal(); setTimeout(()=>{ const s=document.getElementById('par-mov-proc'); if(s) s.value=procId; },80); },200);
+  },300);
+}
+function abrirTarefaAlertaPar(procId){
+  navigate('parcerias');
+  setTimeout(()=>{
+    setParTab('tarefas', document.querySelector('#par-chips .chip:nth-child(4)'));
+    setTimeout(()=>{ openParTarefaModal(); setTimeout(()=>{ const s=document.getElementById('par-tar-proc'); if(s) s.value=procId; },80); },200);
+  },300);
+}
+// ────────────────────────────────────────────────────────────
 
 const TIPOS_LANC = {
   honorario_fixo:  { label:'Honorário fixo',    cor:'b-blue',  sinal:+1 },
@@ -7540,6 +7920,48 @@ function renderFinDashboard(){
       </div>
     </div>
   </div>
+
+  <!-- Top 5 maiores casos por valor recebido -->
+  ${(()=>{
+    const porProc={};
+    lancs.filter(l=>l.status==='recebido'&&(TIPOS_LANC[l.tipo]?.sinal||1)>0&&l.procId).forEach(l=>{
+      porProc[l.procId]=(porProc[l.procId]||0)+l.valor;
+    });
+    const top5=Object.entries(porProc).sort((a,b)=>b[1]-a[1]).slice(0,5);
+    const medals=['🥇','🥈','🥉','4º','5º'];
+    const maxTop=top5[0]?top5[0][1]:1;
+    if(!top5.length) return '';
+    return `<div class="card" style="margin-top:16px">
+      <div class="card-header">
+        <span class="card-title">Top 5 — maiores casos por valor recebido</span>
+        <span style="font-size:11px;color:var(--text-muted)">Atualizado automaticamente</span>
+      </div>
+      <div style="padding:4px 16px 16px">
+        ${top5.map(([procId,val],i)=>{
+          const p=getProcessos().find(x=>x.id===procId);
+          const c=p?getClientes().find(x=>x.id===p.clienteId):null;
+          const pct=Math.round((val/maxTop)*100);
+          return `<div style="display:grid;grid-template-columns:28px 1fr auto;align-items:center;gap:12px;padding:10px 0;border-bottom:${i<4?'1px solid var(--border-subtle)':'none'}">
+            <div style="font-size:18px;text-align:center">${medals[i]}</div>
+            <div>
+              <div style="font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:2px">${c?c.nome:'—'}</div>
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
+                <span style="font-size:10.5px;font-family:monospace;color:var(--text-muted)">${p?p.numero.substring(0,30):'—'}</span>
+                ${p?.area?`<span style="font-size:10px;padding:1px 6px;border-radius:3px;background:var(--navy-700);color:var(--text-secondary)">${p.area}</span>`:''}
+                ${p?.cardId?`<span style="font-size:10px;color:var(--gold-400);font-weight:700">${formatCardId(p.cardId)}</span>`:''}
+              </div>
+              <div style="height:4px;background:var(--slate-700);border-radius:2px;width:100%">
+                <div style="height:4px;background:var(--gold-400);border-radius:2px;width:${pct}%"></div>
+              </div>
+            </div>
+            <div style="text-align:right;flex-shrink:0">
+              <div style="font-size:15px;font-weight:700;color:var(--green-400)">${formatMoney(val)}</div>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+  })()}
 
   <!-- Lançamentos pendentes -->
   ${pendente>0?`<div class="card" style="margin-top:16px">
@@ -7902,18 +8324,26 @@ function renderParFinanceiro(){
   el.innerHTML=`
   <!-- Cards resumo -->
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px">
-    ${[
-      {label:'Total recebido',val:formatMoney(recebido),cor:'var(--green-400)',icon:'ti-trending-up'},
-      {label:'A receber',val:formatMoney(pendente),cor:'var(--amber-400)',icon:'ti-clock'},
-      {label:'Despesas',val:formatMoney(despesas),cor:'var(--text-secondary)',icon:'ti-receipt'},
-      {label:'Lançamentos',val:lancs.length,cor:'var(--blue-400)',icon:'ti-list'},
-    ].map(c=>`<div class="card" style="padding:14px">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-        <i class="ti ${c.icon}" style="font-size:16px;color:${c.cor}"></i>
-        <span style="font-size:11px;color:var(--text-secondary)">${c.label}</span>
-      </div>
-      <div style="font-size:20px;font-weight:700;color:var(--text-primary)">${c.val}</div>
-    </div>`).join('')}
+    ${(()=>{
+      const liquido=recebido-despesas;
+      const liquidoCor=liquido>=0?'var(--green-400)':'var(--red-400)';
+      const cards=[
+        {label:'Total recebido',val:formatMoney(recebido),cor:'var(--green-400)',icon:'ti-trending-up',destaque:false},
+        {label:'Despesas',val:formatMoney(despesas),cor:'var(--red-400)',icon:'ti-receipt',destaque:false},
+        {label:'Valor líquido',val:formatMoney(liquido),cor:liquidoCor,icon:'ti-cash',destaque:true},
+        {label:'A receber',val:formatMoney(pendente),cor:'var(--amber-400)',icon:'ti-clock',destaque:false},
+        {label:'Lançamentos',val:lancs.length,cor:'var(--blue-400)',icon:'ti-list',destaque:false},
+      ];
+      return cards.map(c=>`<div class="card" style="padding:14px${c.destaque?`;border:1px solid ${c.cor}55`:``}">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <i class="ti ${c.icon}" style="font-size:16px;color:${c.cor}"></i>
+          <span style="font-size:11px;color:var(--text-secondary)">${c.label}</span>
+        </div>
+        <div style="font-size:20px;font-weight:700;color:${c.destaque?c.cor:'var(--text-primary)'}">
+          ${c.val}
+        </div>
+      </div>`).join('');
+    })()}
   </div>
 
   <!-- Por processo -->
