@@ -4270,9 +4270,10 @@ const FIREBASE_CONFIG = {
 };
 
 const UID_ROLES = {
-  'nrd0zZ1lrcU0y9Z2d8sQWjmLivA3': { role:'admin',   nome:'Maycon Jordan'   },
-  '3N0lOPBhI8W8J6t9l5S7V5XAWGt2': { role:'parceiro', nome:'Lucas Almeida'   },
-  'Gj2LJ53xRlQXqVPcqJgxGHfhlJA2': { role:'parceiro', nome:'Eduarda Tofoli'  },
+  'nrd0zZ1lrcU0y9Z2d8sQWjmLivA3': { role:'admin',      nome:'Maycon Jordan'   },
+  '3N0lOPBhI8W8J6t9l5S7V5XAWGt2': { role:'parceiro',   nome:'Lucas Almeida'   },
+  'Gj2LJ53xRlQXqVPcqJgxGHfhlJA2': { role:'parceiro',   nome:'Eduarda Tofoli'  },
+  'AayXQp6XkpRrIcRDKsWCxuNm3Xk2': { role:'estagiaria', nome:'Deicy de Souza'  },
 };
 
 const FB = {
@@ -4403,7 +4404,7 @@ const DataStore = (function(){
     prazos:[], documentos:[], agenda:[], user:{}
   };
 
-  function _isAdmin(){ return FB.getRole()==='admin'; }
+  function _isAdmin(){ return FB.getRole()==='admin' || FB.getRole()==='estagiaria'; }
 
   function _initFromLocal(){
     ['clientes','processos','movimentacoes','tarefas','prazos','documentos','agenda','lancamentos'].forEach(k=>{
@@ -4517,7 +4518,7 @@ const ParStore = (function(){
     prazos:[], documentos:[], agenda:[], lancamentos:[]
   };
 
-  function _allowed(){ return FB.getRole()==='admin' || FB.getRole()==='parceiro'; }
+  function _allowed(){ return FB.getRole()==='admin' || FB.getRole()==='parceiro' || FB.getRole()==='estagiaria'; }
 
   function _initFromLocal(){
     Object.keys(_c).forEach(k=>{
@@ -4716,7 +4717,7 @@ function initApp(){
   applyRoleUI();
   updateFirebaseStatus();
   if(FB.ready){
-    if(isAdmin()){
+    if(isAdmin()||isEstagiaria()){
       DataStore.loadFromFirebase().then(()=>{
         DataStore.startListeners();
         renderPage(currentPage);
