@@ -5316,7 +5316,20 @@ function renderParTarefas(){
   el.innerHTML=`<div style="display:flex;justify-content:flex-end;margin-bottom:12px"><button class="btn btn-primary btn-sm" onclick="openParTarefaModal()"><i class="ti ti-plus"></i> Nova tarefa</button></div><div id="par-tarefas-list"></div>`;
   const cont=document.getElementById('par-tarefas-list');
   if(!list.length){cont.innerHTML='<div style="text-align:center;color:var(--text-muted);padding:32px">Nenhuma tarefa cadastrada.</div>';return;}
-  cont.innerHTML=list.map(t=>`<div class="task-card"><div class="task-card-header"><div class="task-card-title">${t.titulo}</div><div style="display:flex;gap:6px"><span class="badge ${pb[t.prioridade]||'b-gray'}">${t.prioridade}</span><span class="badge ${t.status==='concluida'?'b-green':'b-gray'}">${t.status}</span></div></div><div class="task-card-meta">${t.resp?'<span>👤 '+t.resp+'</span>':''}${t.data?'<span>📅 '+formatDate(t.data)+'</span>':''}</div><div style="display:flex;gap:6px;margin-top:8px">${t.status!=='concluida'?`<button class="btn btn-sm" onclick="concluirParTarefa('${t.id}')"><i class="ti ti-check" style="color:var(--green-400)"></i> Concluir</button>`:''}<button class="btn btn-icon btn-sm" onclick="openParTarefaModal('${t.id}')"><i class="ti ti-edit"></i></button><button class="btn btn-icon btn-sm" onclick="confirmDeletePar('tarefa','${t.id}')"><i class="ti ti-trash" style="color:var(--red-400)"></i></button></div></div>`).join('');
+  const procs=getParProcessos(), clis=getParClientes();
+  cont.innerHTML=list.map(t=>{
+    let procBadge='';
+    if(t.procId){
+      const proc=procs.find(p=>p.id===t.procId);
+      if(proc){
+        const cli=clis.find(c=>c.id===proc.clienteId);
+        const idLabel=proc.cardId!=null?`ID: ${String(proc.cardId).padStart(4,'0')} — `:'';
+        const nomeLabel=cli?cli.nome:'—';
+        procBadge=`<div style="margin-top:5px"><span onclick="navigate('parcerias');setTimeout(()=>viewProcesso('${proc.id}',true),200)" style="cursor:pointer;font-size:11.5px;font-weight:600;color:var(--gold-400);background:rgba(212,175,55,0.1);border:1px solid rgba(212,175,55,0.25);border-radius:5px;padding:2px 8px;display:inline-block" title="Abrir processo">📂 ${idLabel}${nomeLabel}</span></div>`;
+      }
+    }
+    return `<div class="task-card"><div class="task-card-header"><div class="task-card-title">${t.titulo}</div><div style="display:flex;gap:6px"><span class="badge ${pb[t.prioridade]||'b-gray'}">${t.prioridade}</span><span class="badge ${t.status==='concluida'?'b-green':'b-gray'}">${t.status}</span></div></div>${procBadge}<div class="task-card-meta">${t.resp?'<span>👤 '+t.resp+'</span>':''}${t.data?'<span>📅 '+formatDate(t.data)+'</span>':''}</div><div style="display:flex;gap:6px;margin-top:8px">${t.status!=='concluida'?`<button class="btn btn-sm" onclick="concluirParTarefa('${t.id}')"><i class="ti ti-check" style="color:var(--green-400)"></i> Concluir</button>`:''}<button class="btn btn-icon btn-sm" onclick="openParTarefaModal('${t.id}')"><i class="ti ti-edit"></i></button><button class="btn btn-icon btn-sm" onclick="confirmDeletePar('tarefa','${t.id}')"><i class="ti ti-trash" style="color:var(--red-400)"></i></button></div></div>`;
+  }).join('');
 }
 
 async function concluirParTarefa(id){
@@ -6753,7 +6766,19 @@ function renderTarefasList(){
   });
   const pb={urgente:'b-red',alta:'b-warn',media:'b-blue',baixa:'b-gray'};
   if(!list.length){ el.innerHTML='<div style="text-align:center;color:var(--text-muted);padding:40px">Nenhuma tarefa encontrada.</div>'; return; }
-  el.innerHTML=list.map(t=>`<div class="task-card">
+  const procs=getProcessos(), clis=getClientes();
+  el.innerHTML=list.map(t=>{
+    let procBadge='';
+    if(t.procId){
+      const proc=procs.find(p=>p.id===t.procId);
+      if(proc){
+        const cli=clis.find(c=>c.id===proc.clienteId);
+        const idLabel=proc.cardId!=null?`ID: ${String(proc.cardId).padStart(4,'0')} — `:'';
+        const nomeLabel=cli?cli.nome:'—';
+        procBadge=`<div style="margin-top:5px"><span onclick="navigate('processos');setTimeout(()=>viewProcesso('${proc.id}',false),200)" style="cursor:pointer;font-size:11.5px;font-weight:600;color:var(--gold-400);background:rgba(212,175,55,0.1);border:1px solid rgba(212,175,55,0.25);border-radius:5px;padding:2px 8px;display:inline-block" title="Abrir processo">📂 ${idLabel}${nomeLabel}</span></div>`;
+      }
+    }
+    return `<div class="task-card">
     <div class="task-card-header">
       <div class="task-card-title">${t.titulo}</div>
       <div style="display:flex;gap:6px">
@@ -6761,6 +6786,7 @@ function renderTarefasList(){
         <span class="badge ${t.status==='concluida'?'b-green':t.status==='andamento'?'b-blue':'b-gray'}">${t.status||'pendente'}</span>
       </div>
     </div>
+    ${procBadge}
     ${t.desc?`<div class="task-card-meta" style="margin-top:4px">${t.desc.substring(0,100)}</div>`:''}
     <div class="task-card-meta">${t.resp?`<span>👤 ${t.resp}</span>`:''}${t.data?`<span>📅 ${formatDate(t.data)}</span>`:''}</div>
     <div style="display:flex;gap:6px;margin-top:8px">
@@ -6768,7 +6794,8 @@ function renderTarefasList(){
       <button class="btn btn-icon btn-sm" onclick="openTarefaModal('${t.id}')" style="width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--border-default);border-radius:var(--r);background:transparent;cursor:pointer;color:var(--gold-400)"><i class="ti ti-edit" style="font-size:14px"></i></button>
       <button class="btn btn-icon btn-sm" onclick="confirmDeleteMain('tarefa','${t.id}','${(t.titulo||'').replace(/'/g,"\'")}') " style="width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--border-default);border-radius:var(--r);background:transparent;cursor:pointer"><i class="ti ti-trash" style="font-size:14px;color:var(--red-400)"></i></button>
     </div>
-  </div>`).join('');
+  </div>`;
+  }).join('');
 }
 
 // ── PRAZOS ───────────────────────────────────────────────────
