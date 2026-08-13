@@ -4717,17 +4717,11 @@ function initApp(){
   applyRoleUI();
   updateFirebaseStatus();
   if(FB.ready){
-    if(isAdmin()||isEstagiaria()){
-      DataStore.loadFromFirebase().then(()=>{
-        DataStore.startListeners();
-        renderPage(currentPage);
-        updateBadges();
-      });
-    }
-    ParStore.loadFromFirebase().then(()=>{
-      ParStore.startListeners();
-      if(currentPage==='parcerias') renderParContent();
-    });
+    const p1=(isAdmin()||isEstagiaria())
+      ? DataStore.loadFromFirebase().then(()=>{ DataStore.startListeners(); renderPage(currentPage); updateBadges(); })
+      : Promise.resolve();
+    const p2=ParStore.loadFromFirebase().then(()=>{ ParStore.startListeners(); if(currentPage==='parcerias') renderParContent(); });
+    Promise.all([p1,p2]).then(()=>{ setTimeout(mostrarLembreteLogin, 600); });
   } else {
   }
   updateBadges();
@@ -4737,6 +4731,47 @@ function initApp(){
   if(isAdmin()) setTimeout(inicializarCardIds, 4000);
   if(isAdmin()||isEstagiaria()) navigate('dashboard');
   else navigate('parcerias');
+}
+
+function mostrarLembreteLogin(){
+  const hoje=new Date().toISOString().split('T')[0];
+  const nome=FB.getNome();
+  const role=FB.getRole();
+  let tarefas=[];
+  if(isAdmin()||isEstagiaria()) tarefas=[...getTarefas(),...getParTarefas()];
+  else tarefas=[...getParTarefas()];
+  const minhas=isAdmin()?tarefas:tarefas.filter(t=>t.resp===nome);
+  const ativas=minhas.filter(t=>t.status!=='concluida'&&t.data);
+  const atrasadas=ativas.filter(t=>t.data<hoje);
+  const venceHoje=ativas.filter(t=>t.data===hoje);
+  if(!atrasadas.length&&!venceHoje.length) return;
+  const primeiroNome=nome.split(' ')[0];
+  const hora=new Date().getHours();
+  const saudacao=hora<12?'Bom dia':hora<18?'Boa tarde':'Boa noite';
+  let linhas='';
+  if(atrasadas.length) linhas+=`<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(239,68,68,0.08);border-radius:8px;margin-bottom:8px"><span style="font-size:22px">🔴</span><div><div style="font-size:15px;font-weight:500;color:var(--text-primary)">${atrasadas.length} tarefa${atrasadas.length>1?'s':''} atrasada${atrasadas.length>1?'s':''}</div><div style="font-size:12px;color:var(--text-muted)">Precisam de atenção imediata</div></div></div>`;
+  if(venceHoje.length) linhas+=`<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(234,179,8,0.08);border-radius:8px"><span style="font-size:22px">🟡</span><div><div style="font-size:15px;font-weight:500;color:var(--text-primary)">${venceHoje.length} tarefa${venceHoje.length>1?'s':''} vence${venceHoje.length>1?'m':''} hoje</div><div style="font-size:12px;color:var(--text-muted)">Prazo é hoje</div></div></div>`;
+  let el=document.getElementById('modal-lembrete-login');
+  if(!el){
+    el=document.createElement('div');
+    el.id='modal-lembrete-login';
+    el.className='modal-overlay';
+    el.style.zIndex='9999';
+    document.body.appendChild(el);
+  }
+  el.innerHTML=`<div class="modal" style="max-width:400px">
+    <div class="modal-header">
+      <span class="modal-title"><i class="ti ti-bell" style="color:var(--gold-400);margin-right:6px"></i>Resumo do dia</span>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:14px;color:var(--text-secondary);margin:0 0 14px">${saudacao}, <strong>${primeiroNome}</strong>!</p>
+      ${linhas}
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" onclick="document.getElementById('modal-lembrete-login').classList.add('hidden')">Entendido</button>
+    </div>
+  </div>`;
+  el.classList.remove('hidden');
 }
 
 function applyRoleUI(){
@@ -5332,7 +5367,9 @@ function renderParTarefas(){
       }
     }
     const dimmed=t.status==='concluida';
-    return `<div class="task-card" style="${dimmed?'opacity:0.55;':''}"><div class="task-card-header"><div class="task-card-title">${t.titulo}</div><div style="display:flex;gap:6px"><span class="badge ${pb[t.prioridade]||'b-gray'}">${t.prioridade}</span><span class="badge ${t.status==='concluida'?'b-green':'b-gray'}">${t.status}</span></div></div>${procBadge}<div class="task-card-meta">${t.resp?'<span>👤 '+t.resp+'</span>':''}${t.data?'<span>📅 '+formatDate(t.data)+'</span>':''}</div><div style="display:flex;gap:6px;margin-top:8px">${t.status!=='concluida'?`<button class="btn btn-sm" onclick="concluirParTarefa('${t.id}')"><i class="ti ti-check" style="color:var(--green-400)"></i> Concluir</button>`:''}<button class="btn btn-icon btn-sm" onclick="openParTarefaModal('${t.id}')"><i class="ti ti-edit"></i></button><button class="btn btn-icon btn-sm" onclick="confirmDeletePar('tarefa','${t.id}')"><i class="ti ti-trash" style="color:var(--red-400)"></i></button></div></div>`;
+    const obsHtml=t.obsConclucao?`<div style="margin-top:8px;padding:7px 10px;background:var(--bg-success,rgba(34,197,94,0.1));border-radius:6px;font-size:12px;color:var(--text-success,#16a34a)"><i class="ti ti-notes" style="margin-right:4px"></i><strong>Obs:</strong> ${t.obsConclucao}</div>`:'';
+    const dateHtml=t.concluidaEm&&t.status==='concluida'?`<div style="font-size:11px;color:var(--text-muted);margin-top:5px"><i class="ti ti-clock" style="margin-right:3px"></i>Concluída em ${new Date(t.concluidaEm).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}${t.concluidoPor?' — '+t.concluidoPor:''}</div>`:'';
+    return `<div class="task-card" style="${dimmed?'opacity:0.55;':''}"><div class="task-card-header"><div class="task-card-title">${t.titulo}</div><div style="display:flex;gap:6px"><span class="badge ${pb[t.prioridade]||'b-gray'}">${t.prioridade}</span><span class="badge ${t.status==='concluida'?'b-green':'b-gray'}">${t.status}</span></div></div>${procBadge}<div class="task-card-meta">${t.resp?'<span>👤 '+t.resp+'</span>':''}${t.data?'<span>📅 '+formatDate(t.data)+'</span>':''}</div>${obsHtml}${dateHtml}<div style="display:flex;gap:6px;margin-top:8px">${t.status!=='concluida'?`<button class="btn btn-sm" onclick="concluirParTarefa('${t.id}')"><i class="ti ti-check" style="color:var(--green-400)"></i> Concluir</button>`:''}<button class="btn btn-icon btn-sm" onclick="openParTarefaModal('${t.id}')"><i class="ti ti-edit"></i></button><button class="btn btn-icon btn-sm" onclick="confirmDeletePar('tarefa','${t.id}')"><i class="ti ti-trash" style="color:var(--red-400)"></i></button></div></div>`;
   };
   let html=ativas.map(t=>buildCard(t)).join('');
   if(concluidas.length){
@@ -5348,13 +5385,15 @@ function renderParTarefas(){
   cont.innerHTML=html;
 }
 
-async function concluirParTarefa(id){
+function concluirParTarefa(id){
   const list=getParTarefas();const i=list.findIndex(x=>x.id===id);
   if(isEstagiaria() && i>-1 && list[i].resp !== FB.getNome()){
     showToast('Você só pode concluir tarefas atribuídas a você.','error'); return;
   }
-  if(i>-1){list[i].status='concluida';list[i].concluidaEm=new Date().toISOString();}
-  await saveParTarefas(list);renderParTarefas();showToast('Tarefa concluída!','success');
+  pedirObsConclusao(async(obs)=>{
+    if(i>-1){list[i].status='concluida';list[i].concluidaEm=new Date().toISOString();list[i].obsConclucao=obs;list[i].concluidoPor=FB.getNome();}
+    await saveParTarefas(list);renderParTarefas();showToast('Tarefa concluída!','success');
+  });
 }
 
 // ── PRAZOS PARCEIROS ────────────────────────────────────────
@@ -5576,6 +5615,44 @@ function showToast(msg, type=''){
 
 function openModal(id){ const m=document.getElementById(id); if(m) m.classList.remove('hidden'); }
 function closeModal(id){ const m=document.getElementById(id); if(m) m.classList.add('hidden'); }
+
+function _buildConcluirModal(){
+  if(document.getElementById('modal-concluir-obs')) return;
+  const d=document.createElement('div');
+  d.id='modal-concluir-obs';
+  d.className='modal-overlay hidden';
+  d.innerHTML=`<div class="modal" style="max-width:440px">
+    <div class="modal-header">
+      <span class="modal-title"><i class="ti ti-circle-check" style="color:var(--green-400);margin-right:6px"></i>Concluir tarefa</span>
+      <button class="btn btn-icon btn-ghost" onclick="closeModal('modal-concluir-obs')"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:13px;color:var(--text-muted);margin:0 0 10px">Registre o que foi realizado antes de concluir.</p>
+      <label class="form-label">Observação *</label>
+      <textarea id="concluir-obs-text" class="form-control" rows="4" placeholder="Ex: Protocolo realizado, petição enviada..."></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('modal-concluir-obs')">Cancelar</button>
+      <button class="btn btn-primary" id="concluir-obs-confirm-btn"><i class="ti ti-check"></i> Confirmar conclusão</button>
+    </div>
+  </div>`;
+  document.body.appendChild(d);
+}
+
+function pedirObsConclusao(onConfirm){
+  _buildConcluirModal();
+  document.getElementById('concluir-obs-text').value='';
+  openModal('modal-concluir-obs');
+  const btn=document.getElementById('concluir-obs-confirm-btn');
+  const novo=btn.cloneNode(true);
+  btn.parentNode.replaceChild(novo,btn);
+  novo.addEventListener('click',()=>{
+    const obs=(document.getElementById('concluir-obs-text').value||'').trim();
+    if(!obs){ showToast('Observação obrigatória para concluir.','error'); return; }
+    closeModal('modal-concluir-obs');
+    onConfirm(obs);
+  });
+}
 function closeConfirm(){ document.getElementById('confirm-overlay').classList.add('hidden'); }
 
 function updateBadges(){
@@ -6219,6 +6296,8 @@ function renderViewTarefas(){
       ${t.resp?`<span>👤 ${t.resp}</span>`:''}
       ${t.data?`<span>📅 ${formatDate(t.data)}</span>`:''}
     </div>
+    ${t.obsConclucao?`<div style="margin-top:8px;padding:7px 10px;background:var(--bg-success,rgba(34,197,94,0.1));border-radius:6px;font-size:12px;color:var(--text-success,#16a34a)"><i class="ti ti-notes" style="margin-right:4px"></i><strong>Obs:</strong> ${t.obsConclucao}</div>`:''}
+    ${t.concluidaEm&&t.status==='concluida'?`<div style="font-size:11px;color:var(--text-muted);margin-top:5px"><i class="ti ti-clock" style="margin-right:3px"></i>Concluída em ${new Date(t.concluidaEm).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}${t.concluidoPor?' — '+t.concluidoPor:''}</div>`:''}
     <div style="display:flex;gap:6px;margin-top:8px">
       ${t.status!=='concluida'?`<button class="btn btn-sm" onclick="concluirTarefaProc('${t.id}')"><i class="ti ti-check" style="color:var(--green-400)"></i> Concluir</button>`:''}
     </div>
@@ -6298,24 +6377,30 @@ async function salvarNovaTarefaProc(){
   showToast('Tarefa criada!','success');
 }
 
-async function concluirTarefaProc(id){
+function concluirTarefaProc(id){
   if(_viewIsParc){
     const list=getParTarefas(); const i=list.findIndex(x=>x.id===id);
     if(isEstagiaria() && i>-1 && list[i].resp !== FB.getNome()){
       showToast('Você só pode concluir tarefas atribuídas a você.','error'); return;
     }
-    if(i>-1){list[i].status='concluida';list[i].concluidaEm=new Date().toISOString();}
-    await saveParTarefas(list);
+    pedirObsConclusao(async(obs)=>{
+      if(i>-1){list[i].status='concluida';list[i].concluidaEm=new Date().toISOString();list[i].obsConclucao=obs;list[i].concluidoPor=FB.getNome();}
+      await saveParTarefas(list);
+      updateBadges(); renderViewTarefas();
+      showToast('Tarefa concluída!','success');
+    });
   } else {
     const list=getTarefas(); const i=list.findIndex(x=>x.id===id);
     if(isEstagiaria() && i>-1 && list[i].resp !== FB.getNome()){
       showToast('Você só pode concluir tarefas atribuídas a você.','error'); return;
     }
-    if(i>-1){list[i].status='concluida';list[i].concluidaEm=new Date().toISOString();}
-    await saveTarefas(list);
+    pedirObsConclusao(async(obs)=>{
+      if(i>-1){list[i].status='concluida';list[i].concluidaEm=new Date().toISOString();list[i].obsConclucao=obs;list[i].concluidoPor=FB.getNome();}
+      await saveTarefas(list);
+      updateBadges(); renderViewTarefas();
+      showToast('Tarefa concluída!','success');
+    });
   }
-  updateBadges(); renderViewTarefas();
-  showToast('Tarefa concluída!','success');
 }
 
 // ── ABA FINANCEIRO POR PROCESSO ──────────────────────────────
@@ -6733,17 +6818,19 @@ async function saveTarefa(){
   if(FB.ready) setTimeout(()=>DataStore.startListeners(), 2000);
 }
 
-async function concluirTarefa(id){
+function concluirTarefa(id){
   const list=getTarefas();
   const i=list.findIndex(x=>x.id===id);
   if(isEstagiaria() && i>-1 && list[i].resp !== FB.getNome()){
     showToast('Você só pode concluir tarefas atribuídas a você.','error'); return;
   }
-  if(i>-1){ list[i].status='concluida'; list[i].concluidaEm=new Date().toISOString(); }
-  await saveTarefas(list);
-  logAudit('Concluiu tarefa','Tarefas',list[i]?.titulo||'','pendente','concluida');
-  renderTarefas(); updateBadges();
-  showToast('Tarefa concluída!','success');
+  pedirObsConclusao(async(obs)=>{
+    if(i>-1){ list[i].status='concluida'; list[i].concluidaEm=new Date().toISOString(); list[i].obsConclucao=obs;list[i].concluidoPor=FB.getNome(); }
+    await saveTarefas(list);
+    logAudit('Concluiu tarefa','Tarefas',list[i]?.titulo||'','pendente','concluida');
+    renderTarefas(); updateBadges();
+    showToast('Tarefa concluída!','success');
+  });
 }
 
 let _taskTab='pendente';
@@ -6804,6 +6891,8 @@ function renderTarefasList(){
     ${procBadge}
     ${t.desc?`<div class="task-card-meta" style="margin-top:4px">${t.desc.substring(0,100)}</div>`:''}
     <div class="task-card-meta">${t.resp?`<span>👤 ${t.resp}</span>`:''}${t.data?`<span>📅 ${formatDate(t.data)}</span>`:''}</div>
+    ${t.obsConclucao?`<div style="margin-top:8px;padding:7px 10px;background:var(--bg-success,rgba(34,197,94,0.1));border-radius:6px;font-size:12px;color:var(--text-success,#16a34a)"><i class="ti ti-notes" style="margin-right:4px"></i><strong>Obs:</strong> ${t.obsConclucao}</div>`:''}
+    ${t.concluidaEm&&t.status==='concluida'?`<div style="font-size:11px;color:var(--text-muted);margin-top:5px"><i class="ti ti-clock" style="margin-right:3px"></i>Concluída em ${new Date(t.concluidaEm).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}${t.concluidoPor?' — '+t.concluidoPor:''}</div>`:''}
     <div style="display:flex;gap:6px;margin-top:8px">
       ${t.status!=='concluida'?`<button class="btn btn-sm" onclick="concluirTarefa('${t.id}')"><i class="ti ti-check" style="color:var(--green-400)"></i> Concluir</button>`:''}
       <button class="btn btn-icon btn-sm" onclick="openTarefaModal('${t.id}')" style="width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--border-default);border-radius:var(--r);background:transparent;cursor:pointer;color:var(--gold-400)"><i class="ti ti-edit" style="font-size:14px"></i></button>
@@ -7440,7 +7529,7 @@ function buscarProcPorNumero(numero){
 
 function getRespAASP(isPar,area){
   if(!isPar) return 'Maycon Jordan';
-  const a=(area||'').toUpperCase();
+  const a=(area||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase();
   if(a.includes('TRABALHISTA')) return 'Lucas Magalhães';
   if(a.includes('FAMIL')) return 'Eduarda Tofoli';
   return 'Maycon Jordan';
@@ -7910,9 +7999,9 @@ function renderFinDashboard(){
     porArea[area]=(porArea[area]||0)+l.valor;
   });
 
-  // Últimos 6 meses
+  // Últimos 12 meses
   const meses=[];
-  for(let i=5;i>=0;i--){
+  for(let i=11;i>=0;i--){
     const d=new Date(anoAtual,mesAtual-i,1);
     const m=d.getMonth(); const a=d.getFullYear();
     const val=lancs.filter(l=>{
@@ -7944,7 +8033,7 @@ function renderFinDashboard(){
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
     <!-- Gráfico de barras dos últimos 6 meses -->
     <div class="card">
-      <div class="card-header"><span class="card-title">Receita — últimos 6 meses</span></div>
+      <div class="card-header"><span class="card-title">Receita — últimos 12 meses</span></div>
       <div style="padding:12px 16px 16px">
         <div style="display:flex;align-items:flex-end;gap:8px;height:100px">
           ${meses.map(m=>`<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px">
@@ -8376,6 +8465,21 @@ function renderParFinanceiro(){
     porProc[l.procId]=(porProc[l.procId]||0)+l.valor;
   });
 
+  // Últimos 12 meses
+  const hoje=new Date();
+  const mesAtual=hoje.getMonth(), anoAtual=hoje.getFullYear();
+  const meses=[];
+  for(let i=11;i>=0;i--){
+    const d=new Date(anoAtual,mesAtual-i,1);
+    const m=d.getMonth(), a=d.getFullYear();
+    const val=lancs.filter(l=>{
+      const ld=new Date(l.data+'T12:00:00');
+      return l.status==='recebido'&&l.tipo!=='despesa'&&ld.getMonth()===m&&ld.getFullYear()===a;
+    }).reduce((s,l)=>s+l.valor,0);
+    meses.push({label:d.toLocaleDateString('pt-BR',{month:'short',year:'2-digit'}),val});
+  }
+  const maxMes=Math.max(...meses.map(m=>m.val),1);
+
   el.innerHTML=`
   <!-- Cards resumo -->
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px">
@@ -8399,6 +8503,20 @@ function renderParFinanceiro(){
         </div>
       </div>`).join('');
     })()}
+  </div>
+
+  <!-- Gráfico de barras últimos 6 meses -->
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-header"><span class="card-title">Receita — últimos 12 meses</span></div>
+    <div style="padding:12px 16px 16px">
+      <div style="display:flex;align-items:flex-end;gap:8px;height:100px">
+        ${meses.map(m=>`<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px">
+          <div style="font-size:10px;color:var(--text-muted)">${m.val?formatMoney(m.val).replace('R$ ',''):''}</div>
+          <div style="width:100%;background:var(--gold-400);border-radius:3px 3px 0 0;height:${m.val?Math.max(4,Math.round((m.val/maxMes)*70)):2}px;opacity:${m.val?1:0.2}"></div>
+          <div style="font-size:10px;color:var(--text-muted);white-space:nowrap">${m.label}</div>
+        </div>`).join('')}
+      </div>
+    </div>
   </div>
 
   <!-- Por processo -->
