@@ -7576,7 +7576,11 @@ function processarArquivoAASP(file){
         const intimacao=(row[iInti]||'').toString().trim();
         const pub=(row[iPub]||'').toString().trim();
         const data=(row[iData]||'').toString().trim();
-        if(!processo) return;
+        if(!processo){
+          const linhasSemProc=intimacao.split('\n').map(l=>l.trim()).filter(l=>l&&l.length>5);
+          naoEncontrados.push({processo:'(sem número)',resumo:linhasSemProc.slice(0,3).join('\n'),data});
+          return;
+        }
         if(jaImportadoAASP(pub,processo)){ duplicados.push({processo}); return; }
         const match=buscarProcPorNumero(processo);
         const linhas=intimacao.split('\n').map(l=>l.trim()).filter(l=>l&&l.length>5);
