@@ -12,6 +12,7 @@
 <script src="https://cdn.jsdelivr.net/npm/firebase@10.12.2/firebase-database-compat.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/firebase@10.12.2/firebase-auth-compat.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
 <style>
 /* ═══════════════════════════════════════════════════════
@@ -5214,6 +5215,7 @@ async function saveParCliente(){
   renderParClientes();
   showToast(id?'Cliente atualizado!':'Cliente cadastrado!','success');
   if(FB.ready) setTimeout(()=>ParStore.startListeners(), 2000);
+  if(!id) setTimeout(()=>promptGerarDocsPar(obj), 600);
 }
 
 function renderParClientes(){
@@ -5222,7 +5224,7 @@ function renderParClientes(){
   el.innerHTML=`<div class="table-wrap"><div class="table-toolbar"><div class="table-toolbar-left"><span class="card-title">Clientes (${list.length})</span></div><button class="btn btn-primary btn-sm" onclick="openParClienteModal()"><i class="ti ti-plus"></i> Novo cliente</button></div><table><thead><tr><th>Nome</th><th>Telefone</th><th>E-mail</th><th>CPF</th><th style="width:80px">Ações</th></tr></thead><tbody id="par-tbody-clientes"></tbody></table></div>`;
   const tbody=document.getElementById('par-tbody-clientes');
   if(!list.length){tbody.innerHTML='<tr class="empty-row"><td colspan="5">Nenhum cliente cadastrado.</td></tr>';return;}
-  tbody.innerHTML=list.map(c=>`<tr><td style="font-weight:500">${c.nome.toUpperCase()}</td><td class="td-2">${c.tel||'—'}</td><td class="td-2">${c.email||'—'}</td><td class="td-2">${c.cpf||'—'}</td><td><div class="flex gap-8"><button class="btn btn-icon btn-sm" onclick="openParClienteModal('${c.id}')"><i class="ti ti-edit"></i></button><button class="btn btn-icon btn-sm" onclick="confirmDeletePar('cliente','${c.id}')"><i class="ti ti-trash" style="color:var(--red-400)"></i></button></div></td></tr>`).join('');
+  tbody.innerHTML=list.map(c=>`<tr><td style="font-weight:500">${c.nome.toUpperCase()}</td><td class="td-2">${c.tel||'—'}</td><td class="td-2">${c.email||'—'}</td><td class="td-2">${c.cpf||'—'}</td><td><div class="flex gap-8"><button class="btn btn-icon btn-sm" onclick="promptGerarDocsPar(getParClientes().find(x=>x.id==='${c.id}'))" title="Gerar documentos" style="width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--border-default);border-radius:var(--r);background:transparent;cursor:pointer;color:var(--blue-400)"><i class="ti ti-file-export" style="font-size:14px"></i></button><button class="btn btn-icon btn-sm" onclick="openParClienteModal('${c.id}')"><i class="ti ti-edit"></i></button><button class="btn btn-icon btn-sm" onclick="confirmDeletePar('cliente','${c.id}')"><i class="ti ti-trash" style="color:var(--red-400)"></i></button></div></td></tr>`).join('');
 }
 
 // ── PROCESSOS PARCEIROS ─────────────────────────────────────
@@ -8773,75 +8775,396 @@ async function gerarDocumentosSelecionados(){
     setTimeout(()=>gerarContratoDocx(c,objeto,parte),delay);
   }
 }
-function _openPrintWin(html){
-  const w=window.open('','_blank','width=860,height=700');
-  if(!w){showToast('Permita popups para gerar PDF','error');return;}
-  w.document.open();w.document.write(html);w.document.close();
-  setTimeout(()=>w.print(),1300);
+// ── Parcerias: gerar documentos ─────────────────────────────────────────────
+let _gerarDocsParCliente=null;
+function promptGerarDocsPar(c){
+  if(!c){showToast('Cliente não encontrado','error');return;}
+  _gerarDocsParCliente=c;
+  const nomeEl=document.getElementById('gdp-cliente-nome');
+  if(nomeEl) nomeEl.textContent=c.nome;
+  ['gdp-proc','gdp-decl','gdp-cont'].forEach(id=>{const el=document.getElementById(id);if(el)el.checked=false;});
+  const el=document.getElementById('gdp-objeto');if(el)el.value='';
+  const el2=document.getElementById('gdp-parte-contraria');if(el2)el2.value='';
+  const cf=document.getElementById('gdp-contrato-fields');if(cf)cf.style.display='none';
+  // reset tipo
+  const rb=document.getElementById('gdp-tipo-comum');if(rb)rb.checked=true;
+  toggleParTipo();
+  openModal('modal-gerar-docs-par');
 }
-function gerarProcuracaoPDF(c){
+function toggleParTipo(){
+  const salMat=document.getElementById('gdp-tipo-salmat')?.checked;
+  const lblProc=document.getElementById('gdp-label-proc');
+  const lblCont=document.getElementById('gdp-label-cont');
+  const lblContSub=document.getElementById('gdp-label-cont-sub');
+  if(lblProc) lblProc.textContent=salMat?'Procuração Salário Maternidade':'Procuração Ad Judicia';
+  if(lblCont) lblCont.textContent=salMat?'Contrato Salário Maternidade':'Contrato de Honorários';
+  if(lblContSub) lblContSub.textContent=salMat?'Saída: Word (.docx) — 30% fixo':'Saída: Word (.docx)';
+  const cf=document.getElementById('gdp-contrato-fields');
+  if(cf){
+    const contChecked=document.getElementById('gdp-cont')?.checked;
+    cf.style.display=(!salMat&&contChecked)?'block':'none';
+  }
+}
+function toggleParContratoFields(){
+  const salMat=document.getElementById('gdp-tipo-salmat')?.checked;
+  const cf=document.getElementById('gdp-contrato-fields');
+  if(cf) cf.style.display=(!salMat&&document.getElementById('gdp-cont')?.checked)?'block':'none';
+}
+async function gerarDocumentosParSelecionados(){
+  const c=_gerarDocsParCliente;
+  if(!c){showToast('Cliente não encontrado','error');return;}
+  const salMat=document.getElementById('gdp-tipo-salmat')?.checked;
+  const proc=document.getElementById('gdp-proc')?.checked;
+  const decl=document.getElementById('gdp-decl')?.checked;
+  const cont=document.getElementById('gdp-cont')?.checked;
+  if(!proc&&!decl&&!cont){showToast('Selecione ao menos um documento','error');return;}
+  closeModal('modal-gerar-docs-par');
+  let delay=0;
+  if(proc){
+    if(salMat) gerarProcuracaoSalMatPDF(c);
+    else gerarProcuracaoParPDF(c);
+    delay+=900;
+  }
+  if(decl) setTimeout(()=>gerarDeclaracaoPDF(c),delay);
+  if(decl) delay+=900;
+  if(cont){
+    const objeto=(document.getElementById('gdp-objeto')?.value||'').trim();
+    const parteContraria=(document.getElementById('gdp-parte-contraria')?.value||'').trim();
+    setTimeout(()=>{
+      if(salMat) gerarContratoSalMatDocx(c);
+      else gerarContratoDocx(c,objeto,parteContraria);
+    },delay);
+  }
+}
+async function gerarProcuracaoParPDF(c){
+  if(!window.PDFLib){showToast('Biblioteca PDF não carregada','error');return;}
+  const{PDFDocument,StandardFonts,rgb}=PDFLib;
   const{qualif}=buildQualif(c);
   const{dia,mes,ano}=getFmtData();
   const nome=c.nome||'';
   const resto=qualif.slice(nome.length);
-  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Procuração Ad Judicia</title>
-<style>
-@page{size:A4;margin:22mm 28mm 18mm 28mm}
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Calibri Light',Calibri,Arial,sans-serif;font-size:11pt;color:#000;background:#fff}
-.hdr{text-align:center;margin-bottom:18pt}
-.hdr img{max-width:220px;max-height:60px;object-fit:contain}
-.tit{text-align:center;font-weight:bold;text-decoration:underline;letter-spacing:8px;margin-bottom:24pt;font-size:13pt}
-.corp{text-align:justify;line-height:1.85;margin-bottom:0}
-.data{text-align:center;margin-top:18pt;margin-bottom:36pt}
-.assi{text-align:center}
-.linha{border-top:1px solid #000;width:280px;margin:0 auto 4pt}
-.ftr{position:fixed;bottom:0;left:-28mm;right:-28mm}
-.ftr img{width:100%;display:block}
-@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
-</style></head><body>
-<div class="hdr"><img src="${GH_BASE}assets/timbrado-header.png" onerror="this.style.display='none'"></div>
-<div class="tit">P R O C U R A Ç Ã O</div>
-<div class="corp"><strong>${escHtml(nome)}</strong>${escHtml(resto)}, nomeia e constitui como seu advogado, <strong>MAYCON JORDAN RIBEIRO DE ALMEIDA</strong>, brasileiro, solteiro, devidamente inscrito nos quadros da Ordem dos Advogados do Brasil sob o número <strong>445.523/SP</strong>, endereço eletrônico maycon.advogado@hotmail.com, com endereço à Rua Mirinzal, 10 – Itaquera, São Paulo, CEP 08240-040, confere poderes <em>ad judicia</em> e <em>et extra</em> para o fim de representar o Outorgante perante o foro em geral para praticar todos os atos necessários ao bom e fiel desempenho do presente mandato, podendo substabelecer os poderes aqui conferidos, no todo ou em parte, com ou sem reserva de iguais e, de modo geral, conferindo-lhe, ainda, poderes especiais para defender seus interesses, confessar, e conhecer a procedência do pedido, desistir, renunciar ao direito sobre que se funda a ação, transigir, firmar compromissos ou acordos, receber valores judiciais ou extrajudiciais, inclusive mediante depósito em conta de sua titularidade profissional, dar quitação, requerer justiça gratuita e firmar declaração de hipossuficiência, podendo agir em Juízo ou fora dele.</div>
-<div class="data">São Paulo, ${dia} de ${mes} de ${ano}.</div>
-<div class="assi"><div class="linha"></div><strong>${escHtml(nome)}</strong></div>
-<div class="ftr"><img src="${GH_BASE}assets/timbrado-footer.png" onerror="this.style.display='none'"></div>
-</body></html>`;
-  _openPrintWin(html);
+  let hdrAB,ftrAB;
+  try{
+    [hdrAB,ftrAB]=await Promise.all([
+      fetch(GH_BASE+'assets/timbrado-header.png').then(r=>{if(!r.ok)throw 0;return r.arrayBuffer();}),
+      fetch(GH_BASE+'assets/timbrado-footer.png').then(r=>{if(!r.ok)throw 0;return r.arrayBuffer();}),
+    ]);
+  }catch{showToast('Timbrado não encontrado','error');return;}
+  const pdf=await PDFDocument.create();
+  const page=pdf.addPage([595.28,841.89]);
+  const{width,height}=page.getSize();
+  const hImg=await pdf.embedPng(hdrAB);
+  const fImg=await pdf.embedPng(ftrAB);
+  const fN=await pdf.embedFont(StandardFonts.Helvetica);
+  const fB=await pdf.embedFont(StandardFonts.HelveticaBold);
+  const fI=await pdf.embedFont(StandardFonts.HelveticaOblique);
+  const clr=rgb(0,0,0);
+  const mL=70,fs=11,lh=fs*1.85,cW=width-140;
+  const hW=270,hH=hW*(hImg.height/hImg.width);
+  page.drawImage(hImg,{x:(width-hW)/2,y:height-30-hH,width:hW,height:hH});
+  const fH=width*(fImg.height/fImg.width);
+  page.drawImage(fImg,{x:0,y:0,width,height:fH});
+  let y=height-30-hH-28;
+  const tit='P R O C U R A Ç Ã O';
+  const tW=fB.widthOfTextAtSize(tit,13);
+  page.drawText(tit,{x:(width-tW)/2,y,size:13,font:fB,color:clr});
+  page.drawLine({start:{x:(width-tW)/2,y:y-1},end:{x:(width+tW)/2,y:y-1},thickness:0.5,color:clr});
+  y-=lh*2.5;
+  y=_pdfRuns(page,[
+    {text:nome,font:fB},
+    {text:resto+', nomeia e constitui como seus advogados, ',font:fN},
+    {text:'MAYCON JORDAN RIBEIRO DE ALMEIDA',font:fB},
+    {text:', brasileiro, solteiro, devidamente inscrito nos quadros da Ordem dos Advogados do Brasil sob o número ',font:fN},
+    {text:'445.523/SP',font:fB},
+    {text:', endereço eletrônico maycon.advogado@hotmail.com, ',font:fN},
+    {text:'LUCAS MAGALHÃES DE ALMEIDA',font:fB},
+    {text:', inscrito na OAB/SP sob o nº ',font:fN},
+    {text:'532.306',font:fB},
+    {text:' e ',font:fN},
+    {text:'EDUARDA TOFOLI CASTELLI',font:fB},
+    {text:', inscrita na OAB/SP sob o nº ',font:fN},
+    {text:'504.211',font:fB},
+    {text:', com endereço à Rua Mirinzal, 10 – Itaquera, São Paulo, CEP 08240-040, confere poderes ',font:fN},
+    {text:'ad judicia',font:fI},
+    {text:' e ',font:fN},
+    {text:'et extra',font:fI},
+    {text:' para o fim de representar o Outorgante perante o foro em geral para praticar todos os atos necessários ao bom e fiel desempenho do presente mandato, podendo substabelecer os poderes aqui conferidos, no todo ou em parte, com ou sem reserva de iguais e, de modo geral, conferindo-lhe, ainda, poderes especiais para defender seus interesses, confessar, e conhecer a procedência do pedido, desistir, renunciar ao direito sobre que se funda a ação, transigir, firmar compromissos ou acordos, receber valores judiciais ou extrajudiciais, inclusive mediante depósito em conta de sua titularidade profissional, dar quitação, requerer justiça gratuita e firmar declaração de hipossuficiência, podendo agir em Juízo ou fora dele.',font:fN},
+  ],mL,y,cW,fs,lh,clr);
+  y-=lh;
+  const dt='São Paulo, '+dia+' de '+mes+' de '+ano+'.';
+  const dtW=fN.widthOfTextAtSize(dt,fs);
+  page.drawText(dt,{x:(width-dtW)/2,y,size:fs,font:fN,color:clr});
+  y-=lh*3.5;
+  page.drawLine({start:{x:(width-200)/2,y},end:{x:(width+200)/2,y},thickness:0.5,color:clr});
+  y-=lh*0.8;
+  const nW=fB.widthOfTextAtSize(nome,fs);
+  page.drawText(nome,{x:(width-nW)/2,y,size:fs,font:fB,color:clr});
+  const bytes=await pdf.save();
+  const blob=new Blob([bytes],{type:'application/pdf'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;a.download='PROCURACAO_PAR_'+nome.replace(/\s+/g,'_')+'.pdf';a.click();
+  setTimeout(()=>URL.revokeObjectURL(url),5000);
 }
-function gerarDeclaracaoPDF(c){
+async function gerarProcuracaoSalMatPDF(c){
+  if(!window.PDFLib){showToast('Biblioteca PDF não carregada','error');return;}
+  const{PDFDocument,StandardFonts,rgb}=PDFLib;
   const{qualif}=buildQualif(c);
   const{dia,mes,ano}=getFmtData();
   const nome=c.nome||'';
   const resto=qualif.slice(nome.length);
-  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Declaração de Hipossuficiência</title>
-<style>
-@page{size:A4;margin:22mm 28mm 18mm 28mm}
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Calibri Light',Calibri,Arial,sans-serif;font-size:11pt;color:#000;background:#fff}
-.hdr{text-align:center;margin-bottom:18pt}
-.hdr img{max-width:220px;max-height:60px;object-fit:contain}
-.tit{text-align:center;font-weight:bold;text-decoration:underline;letter-spacing:4px;margin-bottom:24pt;font-size:12pt}
-.corp{text-align:justify;line-height:1.85;margin-bottom:12pt}
-.data{text-align:center;margin-top:16pt;margin-bottom:36pt}
-.assi{text-align:center}
-.linha{border-top:1px solid #000;width:280px;margin:0 auto 4pt}
-.ftr{position:fixed;bottom:0;left:-28mm;right:-28mm}
-.ftr img{width:100%;display:block}
-@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
-</style></head><body>
-<div class="hdr"><img src="${GH_BASE}assets/timbrado-header.png" onerror="this.style.display='none'"></div>
-<div class="tit">DECLARAÇÃO DE HIPOSSUFICIÊNCIA ECONÔMICA</div>
-<div class="corp"><strong>${escHtml(nome)}</strong>${escHtml(resto)}, declara, para os devidos fins de direito, que não possui condições financeiras de arcar com o pagamento das custas, despesas processuais e honorários advocatícios, sem prejuízo de seu sustento e de sua família.</div>
-<div class="corp">Diante disso, requer a concessão dos benefícios da gratuidade da justiça, nos termos do artigo 98 do Código de Processo Civil.</div>
-<div class="corp">Ressalta, ainda, que, nos termos da Lei nº 7.115/83, a declaração de hipossuficiência econômica firmada pela própria parte goza de presunção de veracidade, sendo suficiente para a concessão do benefício, salvo prova em contrário.</div>
-<div class="corp">Declara, por fim, que as informações acima prestadas são verdadeiras, estando ciente das sanções legais aplicáveis em caso de falsidade.</div>
-<div class="corp">Firmo o presente sob as penas da lei.</div>
-<div class="data">São Paulo, ${dia} de ${mes} de ${ano}.</div>
-<div class="assi"><div class="linha"></div><strong>${escHtml(nome)}</strong></div>
-<div class="ftr"><img src="${GH_BASE}assets/timbrado-footer.png" onerror="this.style.display='none'"></div>
-</body></html>`;
-  _openPrintWin(html);
+  let hdrAB,ftrAB;
+  try{
+    [hdrAB,ftrAB]=await Promise.all([
+      fetch(GH_BASE+'assets/timbrado-header.png').then(r=>{if(!r.ok)throw 0;return r.arrayBuffer();}),
+      fetch(GH_BASE+'assets/timbrado-footer.png').then(r=>{if(!r.ok)throw 0;return r.arrayBuffer();}),
+    ]);
+  }catch{showToast('Timbrado não encontrado','error');return;}
+  const pdf=await PDFDocument.create();
+  const page=pdf.addPage([595.28,841.89]);
+  const{width,height}=page.getSize();
+  const hImg=await pdf.embedPng(hdrAB);
+  const fImg=await pdf.embedPng(ftrAB);
+  const fN=await pdf.embedFont(StandardFonts.Helvetica);
+  const fB=await pdf.embedFont(StandardFonts.HelveticaBold);
+  const fI=await pdf.embedFont(StandardFonts.HelveticaOblique);
+  const clr=rgb(0,0,0);
+  const mL=70,fs=11,lh=fs*1.85,cW=width-140;
+  const hW=270,hH=hW*(hImg.height/hImg.width);
+  page.drawImage(hImg,{x:(width-hW)/2,y:height-30-hH,width:hW,height:hH});
+  const fH=width*(fImg.height/fImg.width);
+  page.drawImage(fImg,{x:0,y:0,width,height:fH});
+  let y=height-30-hH-28;
+  const tit='P R O C U R A Ç Ã O';
+  const tW=fB.widthOfTextAtSize(tit,13);
+  page.drawText(tit,{x:(width-tW)/2,y,size:13,font:fB,color:clr});
+  page.drawLine({start:{x:(width-tW)/2,y:y-1},end:{x:(width+tW)/2,y:y-1},thickness:0.5,color:clr});
+  y-=lh*2.5;
+  y=_pdfRuns(page,[
+    {text:nome,font:fB},
+    {text:resto+', nomeia e constitui como seu advogado, ',font:fN},
+    {text:'MAYCON JORDAN RIBEIRO DE ALMEIDA',font:fB},
+    {text:', brasileiro, solteiro, devidamente inscrito nos quadros da Ordem dos Advogados do Brasil sob o número ',font:fN},
+    {text:'445.523/SP',font:fB},
+    {text:', endereço eletrônico maycon.advogado@hotmail.com, com endereço à Rua Mirinzal, 10 – Itaquera, São Paulo, CEP 08240-040, confere poderes para o fim de representar o Outorgante perante o Instituto Nacional do Seguro Social – INSS, podendo requerer, acompanhar, cumprir exigências, apresentar documentos, formular declarações, interpor recursos administrativos e praticar todos os atos necessários à concessão, manutenção e revisão de benefícios previdenciários, especialmente o salário-maternidade, inclusive por meio dos sistemas eletrônicos (Meu INSS). Conferindo ainda em caso de demanda judicial poderes para o foro em geral, com a cláusula ',font:fN},
+    {text:'"ad judicia et extra"',font:fI},
+    {text:', para propor ações, defender interesses e praticar todos os atos processuais necessários, em qualquer instância ou tribunal, podendo substabelecer os poderes aqui conferidos, no todo ou em parte, com ou sem reserva de iguais e, de modo geral, conferindo-lhe, ainda, poderes especiais para defender seus interesses, confessar, e conhecer a procedência do pedido, desistir, renunciar ao direito sobre que se funda a ação, transigir, firmar compromissos ou acordos, receber valores judiciais ou extrajudiciais, inclusive mediante depósito em conta de sua titularidade profissional, dar quitação, requerer justiça gratuita e firmar declaração de hipossuficiência, podendo agir em Juízo ou fora dele.',font:fN},
+  ],mL,y,cW,fs,lh,clr);
+  y-=lh;
+  const dt='São Paulo, '+dia+' de '+mes+' de '+ano+'.';
+  const dtW=fN.widthOfTextAtSize(dt,fs);
+  page.drawText(dt,{x:(width-dtW)/2,y,size:fs,font:fN,color:clr});
+  y-=lh*3.5;
+  page.drawLine({start:{x:(width-200)/2,y},end:{x:(width+200)/2,y},thickness:0.5,color:clr});
+  y-=lh*0.8;
+  const nW=fB.widthOfTextAtSize(nome,fs);
+  page.drawText(nome,{x:(width-nW)/2,y,size:fs,font:fB,color:clr});
+  const bytes=await pdf.save();
+  const blob=new Blob([bytes],{type:'application/pdf'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;a.download='PROCURACAO_SALMAT_'+nome.replace(/\s+/g,'_')+'.pdf';a.click();
+  setTimeout(()=>URL.revokeObjectURL(url),5000);
+}
+async function gerarContratoSalMatDocx(c){
+  const{qualif}=buildQualif(c);
+  const{dia,mes}=getFmtData();
+  const nome=c.nome||'';
+  const lang='<w:lang w:eastAsia="pt-BR"/>';
+  let arrayBuffer;
+  try{
+    const resp=await fetch(GH_BASE+'templates/contrato-salmat-parceria.docx');
+    if(!resp.ok) throw new Error('HTTP '+resp.status);
+    arrayBuffer=await resp.arrayBuffer();
+  }catch(e){showToast('Template do contrato não encontrado no GitHub.','error');return;}
+  const zip=await JSZip.loadAsync(arrayBuffer);
+  let docXml=await zip.file('word/document.xml').async('string');
+  // Substituir qualificação completa do cliente (inclui nome)
+  docXml=docXml.replace(
+    '<w:t>MICHELLI DOS SANTOS SOARES DE OLIVEIRA, brasileira, portadora do RG n° 38.579.907-X e CPF n° 470.258.298-46, residente e domiciliada na Rua Virgínia de Miranda, 715 - Jardim Norma, São Paulo - SP, CEP 08240-217</w:t>',
+    `<w:t>${escXml(qualif)}</w:t>`
+  );
+  // Substituir nome na assinatura (PAULO CARRION TERUEL é erro no modelo — substitui pelo cliente)
+  docXml=docXml.replaceAll('<w:t>PAULO CARRION TERUEL</w:t>',`<w:t>${escXml(nome)}</w:t>`);
+  // Substituir data
+  docXml=docXml.replace(`<w:highlight w:val="yellow"/>${lang}</w:rPr><w:t>XX</w:t>`,`${lang}</w:rPr><w:t>${escXml(dia)}</w:t>`);
+  docXml=docXml.replace(`<w:highlight w:val="yellow"/>${lang}</w:rPr><w:t>XXX</w:t>`,`${lang}</w:rPr><w:t>${escXml(mes)}</w:t>`);
+  // Fallback sem lang
+  docXml=docXml.replace('<w:highlight w:val="yellow"/></w:rPr><w:t>XX</w:t>',`</w:rPr><w:t>${escXml(dia)}</w:t>`);
+  docXml=docXml.replace('<w:highlight w:val="yellow"/></w:rPr><w:t>XXX</w:t>',`</w:rPr><w:t>${escXml(mes)}</w:t>`);
+  docXml=docXml.replaceAll('<w:highlight w:val="yellow"/>','');
+  zip.file('word/document.xml',docXml);
+  const blob=await zip.generateAsync({type:'blob',mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;a.download='CONTRATO_SALMAT_'+nome.replace(/\s+/g,'_')+'.docx';a.click();
+  setTimeout(()=>URL.revokeObjectURL(url),5000);
+}
+// ── fim parcerias docs ────────────────────────────────────────────────────────
+function _pdfRuns(page,runs,x0,y,maxW,fs,lh,color){
+  // Tokenize into words + spaces preserving font
+  const toks=[];
+  for(const r of runs){
+    r.text.split(/(\s+)/).forEach(p=>{
+      if(p) toks.push({t:p,f:r.font,sp:/^\s+$/.test(p),w:r.font.widthOfTextAtSize(p,fs)});
+    });
+  }
+  // Build lines
+  const lines=[];
+  let cur=[],cw=0;
+  for(const tk of toks){
+    if(!tk.sp&&cw+tk.w>maxW&&cur.length){lines.push({items:cur,last:false});cur=[];cw=0;}
+    cur.push(tk);cw+=tk.w;
+  }
+  if(cur.length) lines.push({items:cur,last:true});
+  // Draw lines with justification
+  for(const line of lines){
+    const words=line.items.filter(it=>!it.sp);
+    if(!line.last&&words.length>1){
+      // Justified: distribute extra space evenly between words
+      const totalW=words.reduce((s,w)=>s+w.w,0);
+      const gap=(maxW-totalW)/(words.length-1);
+      let cx=x0;
+      words.forEach((w,i)=>{
+        page.drawText(w.t,{x:cx,y,size:fs,font:w.f,color});
+        cx+=w.w+(i<words.length-1?gap:0);
+      });
+    } else {
+      // Last line: left-aligned
+      let cx=x0;
+      line.items.forEach(it=>{
+        if(!it.sp) page.drawText(it.t,{x:cx,y,size:fs,font:it.f,color});
+        cx+=it.w;
+      });
+    }
+    y-=lh;
+  }
+  return y;
+}
+async function gerarProcuracaoPDF(c){
+  if(!window.PDFLib){showToast('Biblioteca PDF não carregada','error');return;}
+  const{PDFDocument,StandardFonts,rgb}=PDFLib;
+  const{qualif}=buildQualif(c);
+  const{dia,mes,ano}=getFmtData();
+  const nome=c.nome||'';
+  const resto=qualif.slice(nome.length);
+  let hdrAB,ftrAB;
+  try{
+    [hdrAB,ftrAB]=await Promise.all([
+      fetch(GH_BASE+'assets/timbrado-header.png').then(r=>{if(!r.ok)throw 0;return r.arrayBuffer();}),
+      fetch(GH_BASE+'assets/timbrado-footer.png').then(r=>{if(!r.ok)throw 0;return r.arrayBuffer();}),
+    ]);
+  }catch{showToast('Timbrado não encontrado no GitHub','error');return;}
+  const pdf=await PDFDocument.create();
+  const page=pdf.addPage([595.28,841.89]);
+  const{width,height}=page.getSize();
+  const hImg=await pdf.embedPng(hdrAB);
+  const fImg=await pdf.embedPng(ftrAB);
+  const fN=await pdf.embedFont(StandardFonts.Helvetica);
+  const fB=await pdf.embedFont(StandardFonts.HelveticaBold);
+  const fI=await pdf.embedFont(StandardFonts.HelveticaOblique);
+  const clr=rgb(0,0,0);
+  const mL=70,fs=11,lh=fs*1.85,cW=width-140;
+  const hW=270,hH=hW*(hImg.height/hImg.width);
+  page.drawImage(hImg,{x:(width-hW)/2,y:height-30-hH,width:hW,height:hH});
+  const fH=width*(fImg.height/fImg.width);
+  page.drawImage(fImg,{x:0,y:0,width,height:fH});
+  let y=height-30-hH-28;
+  const tit='P R O C U R A Ç Ã O';
+  const tW=fB.widthOfTextAtSize(tit,13);
+  page.drawText(tit,{x:(width-tW)/2,y,size:13,font:fB,color:clr});
+  page.drawLine({start:{x:(width-tW)/2,y:y-1},end:{x:(width+tW)/2,y:y-1},thickness:0.5,color:clr});
+  y-=lh*2.5;
+  y=_pdfRuns(page,[
+    {text:nome,font:fB},
+    {text:resto+', nomeia e constitui como seu advogado, ',font:fN},
+    {text:'MAYCON JORDAN RIBEIRO DE ALMEIDA',font:fB},
+    {text:', brasileiro, solteiro, devidamente inscrito nos quadros da Ordem dos Advogados do Brasil sob o número ',font:fN},
+    {text:'445.523/SP',font:fB},
+    {text:', endereço eletrônico maycon.advogado@hotmail.com, com endereço à Rua Mirinzal, 10 – Itaquera, São Paulo, CEP 08240-040, confere poderes ',font:fN},
+    {text:'ad judicia',font:fI},
+    {text:' e ',font:fN},
+    {text:'et extra',font:fI},
+    {text:' para o fim de representar o Outorgante perante o foro em geral para praticar todos os atos necessários ao bom e fiel desempenho do presente mandato, podendo substabelecer os poderes aqui conferidos, no todo ou em parte, com ou sem reserva de iguais e, de modo geral, conferindo-lhe, ainda, poderes especiais para defender seus interesses, confessar, e conhecer a procedência do pedido, desistir, renunciar ao direito sobre que se funda a ação, transigir, firmar compromissos ou acordos, receber valores judiciais ou extrajudiciais, inclusive mediante depósito em conta de sua titularidade profissional, dar quitáção, requerer justiça gratuita e firmar declaração de hipossuficiência, podendo agir em Juízo ou fora dele.',font:fN},
+  ],mL,y,cW,fs,lh,clr);
+  y-=lh;
+  const dt='São Paulo, '+dia+' de '+mes+' de '+ano+'.';
+  const dtW=fN.widthOfTextAtSize(dt,fs);
+  page.drawText(dt,{x:(width-dtW)/2,y,size:fs,font:fN,color:clr});
+  y-=lh*3.5;
+  page.drawLine({start:{x:(width-200)/2,y},end:{x:(width+200)/2,y},thickness:0.5,color:clr});
+  y-=lh*0.8;
+  const nW=fB.widthOfTextAtSize(nome,fs);
+  page.drawText(nome,{x:(width-nW)/2,y,size:fs,font:fB,color:clr});
+  const bytes=await pdf.save();
+  const blob=new Blob([bytes],{type:'application/pdf'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;a.download='PROCURACAO_'+nome.replace(/\s+/g,'_')+'.pdf';a.click();
+  setTimeout(()=>URL.revokeObjectURL(url),5000);
+}
+async function gerarDeclaracaoPDF(c){
+  if(!window.PDFLib){showToast('Biblioteca PDF não carregada','error');return;}
+  const{PDFDocument,StandardFonts,rgb}=PDFLib;
+  const{qualif}=buildQualif(c);
+  const{dia,mes,ano}=getFmtData();
+  const nome=c.nome||'';
+  const resto=qualif.slice(nome.length);
+  let hdrAB,ftrAB;
+  try{
+    [hdrAB,ftrAB]=await Promise.all([
+      fetch(GH_BASE+'assets/timbrado-header.png').then(r=>{if(!r.ok)throw 0;return r.arrayBuffer();}),
+      fetch(GH_BASE+'assets/timbrado-footer.png').then(r=>{if(!r.ok)throw 0;return r.arrayBuffer();}),
+    ]);
+  }catch{showToast('Timbrado não encontrado no GitHub','error');return;}
+  const pdf=await PDFDocument.create();
+  const page=pdf.addPage([595.28,841.89]);
+  const{width,height}=page.getSize();
+  const hImg=await pdf.embedPng(hdrAB);
+  const fImg=await pdf.embedPng(ftrAB);
+  const fN=await pdf.embedFont(StandardFonts.Helvetica);
+  const fB=await pdf.embedFont(StandardFonts.HelveticaBold);
+  const clr=rgb(0,0,0);
+  const mL=70,fs=11,lh=fs*1.85,cW=width-140;
+  const hW=270,hH=hW*(hImg.height/hImg.width);
+  page.drawImage(hImg,{x:(width-hW)/2,y:height-30-hH,width:hW,height:hH});
+  const fH=width*(fImg.height/fImg.width);
+  page.drawImage(fImg,{x:0,y:0,width,height:fH});
+  let y=height-30-hH-28;
+  const tit='DECLARAÇÃO DE HIPOSSUFICIÊNCIA ECONÔMICA';
+  const titFs=10.5;
+  const tW=fB.widthOfTextAtSize(tit,titFs);
+  const titX=tW<=cW?(width-tW)/2:mL;
+  page.drawText(tit,{x:titX,y,size:titFs,font:fB,color:clr});
+  page.drawLine({start:{x:titX,y:y-1},end:{x:titX+Math.min(tW,cW),y:y-1},thickness:0.5,color:clr});
+  y-=lh*2.5;
+  y=_pdfRuns(page,[
+    {text:nome,font:fB},
+    {text:resto+', declara, para os devidos fins de direito, que não possui condições financeiras de arcar com o pagamento das custas, despesas processuais e honorários advocatícios, sem prejuízo de seu sustento e de sua família.',font:fN},
+  ],mL,y,cW,fs,lh,clr);
+  y-=lh*0.5;
+  y=_pdfRuns(page,[{text:'Diante disso, requer a concessão dos benefícios da gratuidade da justiça, nos termos do artigo 98 do Código de Processo Civil.',font:fN}],mL,y,cW,fs,lh,clr);
+  y-=lh*0.5;
+  y=_pdfRuns(page,[{text:'Ressalta, ainda, que, nos termos da Lei nº 7.115/83, a declaração de hipossuficiência econômica firmada pela própria parte goza de presunção de veracidade, sendo suficiente para a concessão do benefício, salvo prova em contrário.',font:fN}],mL,y,cW,fs,lh,clr);
+  y-=lh*0.5;
+  y=_pdfRuns(page,[{text:'Declara, por fim, que as informações acima prestadas são verdadeiras, estando ciente das sanções legais aplicáveis em caso de falsidade.',font:fN}],mL,y,cW,fs,lh,clr);
+  y-=lh*0.5;
+  y=_pdfRuns(page,[{text:'Firmo o presente sob as penas da lei.',font:fN}],mL,y,cW,fs,lh,clr);
+  y-=lh;
+  const dt='São Paulo, '+dia+' de '+mes+' de '+ano+'.';
+  const dtW=fN.widthOfTextAtSize(dt,fs);
+  page.drawText(dt,{x:(width-dtW)/2,y,size:fs,font:fN,color:clr});
+  y-=lh*3.5;
+  page.drawLine({start:{x:(width-200)/2,y},end:{x:(width+200)/2,y},thickness:0.5,color:clr});
+  y-=lh*0.8;
+  const nW=fB.widthOfTextAtSize(nome,fs);
+  page.drawText(nome,{x:(width-nW)/2,y,size:fs,font:fB,color:clr});
+  const bytes=await pdf.save();
+  const blob=new Blob([bytes],{type:'application/pdf'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;a.download='DECLARACAO_'+nome.replace(/\s+/g,'_')+'.pdf';a.click();
+  setTimeout(()=>URL.revokeObjectURL(url),5000);
 }
 async function gerarContratoDocx(c,objeto,parteContraria){
   const{qualif}=buildQualif(c);
@@ -8875,7 +9198,7 @@ async function gerarContratoDocx(c,objeto,parteContraria){
   );
   docXml=docXml.replace(
     '<w:highlight w:val="yellow"/></w:rPr><w:t>[Nome da parte contrária]</w:t>',
-    `</w:rPr><w:t>${escXml(parteContraria||'—')}</w:t>`
+    `<w:b/><w:bCs/></w:rPr><w:t>${escXml(parteContraria||'—')}</w:t>`
   );
   const lang='<w:lang w:eastAsia="pt-BR"/>';
   docXml=docXml.replace(`<w:highlight w:val="yellow"/>${lang}</w:rPr><w:t>XX</w:t>`,`${lang}</w:rPr><w:t>${escXml(dia)}</w:t>`);
@@ -8955,4 +9278,5 @@ window.onload=async function(){
       <button class="btn" onclick="closeModal(&#39;modal-par-lanc&#39;)">Cancelar</button>
       <button class="btn btn-primary" onclick="saveParLancamento()"><i class="ti ti-check"></i> Salvar</button>
     </div>
-  </div></div><div id="modal-gerar-docs" class="modal-overlay hidden"><div class="modal" style="max-width:460px"><div class="modal-header"><span class="modal-title"><i class="ti ti-file-text"></i> Gerar Documentos</span><button class="btn btn-icon btn-ghost" onclick="closeModal('modal-gerar-docs')"><i class="ti ti-x"></i></button></div><div class="modal-body"><p id="gd-cliente-nome" style="font-weight:700;font-size:13px;margin-bottom:10px;color:var(--text-primary)"></p><p style="margin-bottom:12px;font-size:12px;color:var(--text-secondary)">Selecione os documentos que deseja gerar:</p><div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px"><label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;border:1px solid var(--border-default);border-radius:var(--r)"><input type="checkbox" id="gd-proc" style="width:16px;height:16px;flex-shrink:0"><div><div style="font-weight:600;font-size:13px">Procuração Ad Judicia</div><div style="font-size:11px;color:var(--text-secondary)">Saída: PDF (via impressão)</div></div></label><label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;border:1px solid var(--border-default);border-radius:var(--r)"><input type="checkbox" id="gd-decl" style="width:16px;height:16px;flex-shrink:0"><div><div style="font-weight:600;font-size:13px">Declaração de Hipossuficiência</div><div style="font-size:11px;color:var(--text-secondary)">Saída: PDF (via impressão)</div></div></label><label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;border:1px solid var(--border-default);border-radius:var(--r)"><input type="checkbox" id="gd-cont" onchange="toggleContratoFields()" style="width:16px;height:16px;flex-shrink:0"><div><div style="font-weight:600;font-size:13px">Contrato de Honorários</div><div style="font-size:11px;color:var(--text-secondary)">Saída: Word (.docx)</div></div></label></div><div id="gd-contrato-fields" style="display:none;border:1px solid var(--border-default);border-radius:var(--r);padding:12px;margin-bottom:4px;background:var(--bg-subtle)"><div class="form-group" style="margin-bottom:10px"><label class="form-label">Objeto da ação</label><input class="form-control" id="gd-objeto" placeholder="Ex: rescisão indireta do contrato de trabalho"></div><div class="form-group"><label class="form-label">Parte contrária</label><input class="form-control" id="gd-parte-contraria" placeholder="Ex: Empresa XYZ Ltda."></div></div></div><div class="modal-footer"><button class="btn" onclick="closeModal('modal-gerar-docs')">Cancelar</button><button class="btn btn-primary" onclick="gerarDocumentosSelecionados()"><i class="ti ti-file-download"></i> Gerar selecionados</button></div></div></div><div id="modal-par-agenda" class="modal-overlay hidden"><div class="modal"><div class="modal-header"><span class="modal-title">Novo compromisso</span><button class="btn btn-icon btn-ghost" onclick="closeModal(&#39;modal-par-agenda&#39;)"><i class="ti ti-x"></i></button></div><div class="modal-body"><div class="form-grid"><div class="form-group form-full"><label class="form-label">Título *</label><input class="form-control" id="par-ag-titulo" placeholder="Ex: Audiência, Reunião..."></div><div class="form-group"><label class="form-label">Data *</label><input class="form-control" id="par-ag-data" type="date"></div><div class="form-group"><label class="form-label">Hora</label><input class="form-control" id="par-ag-hora" type="time"></div><div class="form-group form-full"><label class="form-label">Observações</label><textarea class="form-control" id="par-ag-obs" rows="3"></textarea></div></div></div><div class="modal-footer"><button class="btn" onclick="closeModal(&#39;modal-par-agenda&#39;)">Cancelar</button><button class="btn btn-primary" onclick="saveParAgendaItem()"><i class="ti ti-check"></i> Salvar</button></div></div></div><div id="modal-par-processo" class="modal-overlay hidden"><div class="modal modal-lg"><div class="modal-header"><span class="modal-title" id="modal-par-proc-title">Novo processo</span><button class="btn btn-icon btn-ghost" onclick="closeModal('modal-par-processo')"><i class="ti ti-x"></i></button></div><div class="modal-body"><input type="hidden" id="par-proc-id"><div class="form-grid" style="margin-bottom:12px"><div class="form-group form-full"><label class="form-label">Número do processo *</label><input class="form-control mono" id="par-proc-numero" placeholder="0000000-00.0000.0.00.0000"></div><div class="form-group"><label class="form-label">Cliente *</label><select class="form-control" id="par-proc-cliente"></select></div></div><div class="form-grid-3" style="margin-bottom:12px"><div class="form-group"><label class="form-label">Tribunal</label><input class="form-control" id="par-proc-tribunal" placeholder="Ex: TJSP, TRT-2, TRF-3"></div><div class="form-group"><label class="form-label">Sistema</label><select class="form-control" id="par-proc-sistema"><option value="">Selecione...</option><option>EPROC</option><option>ESAJ</option><option>E-SAJ</option><option>PJE</option><option>PROJUDI</option><option>Outro</option></select></div><div class="form-group"><label class="form-label">Status</label><select class="form-control" id="par-proc-status"><option value="ativo">Ativo</option><option value="aguardando">Aguardando</option><option value="sentenca">Sentença</option><option value="recurso">Recurso</option><option value="cumprimento">Cumprimento</option><option value="finalizado">Finalizado</option><option value="encerrado">Encerrado</option></select></div></div><div class="form-grid-3" style="margin-bottom:12px"><div class="form-group"><label class="form-label">Área jurídica</label><select class="form-control" id="par-proc-area"><option value="">Selecione...</option><option>CÍVEL</option><option>CRIMINAL</option><option>TRABALHISTA</option><option>FAMÍLIA</option><option>PREVIDENCIÁRIO</option><option>TRIBUTÁRIO</option><option>Outro</option></select></div><div class="form-group"><label class="form-label">Tipo de ação (objeto)</label><input class="form-control" id="par-proc-objeto" placeholder="Ex: Danos Morais..."></div><div class="form-group"><label class="form-label">Fase atual</label><select class="form-control" id="par-proc-fase"><option value="">Selecione...</option><option>CONHECIMENTO</option><option>CUMPRIMENTO DE SENTENÇA</option><option>RECURSAL</option><option>EXECUÇÃO</option><option>ENCERRADO</option></select></div></div><div class="form-grid-3" style="margin-bottom:12px"><div class="form-group"><label class="form-label">Vara / Juízo</label><input class="form-control" id="par-proc-vara" placeholder="Ex: 5ª Vara Cível SP"></div><div class="form-group"><label class="form-label">Link da pasta digital</label><input class="form-control" id="par-proc-link" placeholder="https://drive.google.com/..."></div><div class="form-group"><label class="form-label">Data de distribuição</label><input class="form-control" id="par-proc-data" type="date"></div></div><div class="form-grid-3" style="margin-bottom:12px"><div class="form-group"><label class="form-label">Polo ativo (autor)</label><input class="form-control" id="par-proc-ativo" placeholder="Nome do autor"></div><div class="form-group"><label class="form-label">Polo passivo (réu)</label><input class="form-control" id="par-proc-passivo" placeholder="Nome do réu"></div><div class="form-group"><label class="form-label">Valor honorários (R$)</label><input class="form-control" id="par-proc-valor" type="number" placeholder="0.00" min="0" step="0.01"></div></div><div class="form-grid" style="margin-bottom:12px"><div class="form-group"><label class="form-label">Resultado</label><select class="form-control" id="par-proc-resultado"><option value="">—</option><option>PROCEDENTE</option><option>IMPROCEDENTE</option><option>ACORDO</option><option>ACORDO ANPP</option><option>EXTINTO</option><option>ABSOLVIDO</option><option>CONDENADO/PENA</option><option>CONDENADO/LIBERDADE</option><option>LIBERDADE PROVISÓRIA</option><option>DESCONTRATADO</option></select></div><div class="form-group"><label class="form-label">Andamento atual</label><textarea class="form-control" id="par-proc-andamento" rows="2" placeholder="Descreva o andamento atual..."></textarea></div></div><div class="form-group" style="margin-bottom:12px"><label class="form-label">Observações / Estratégia</label><textarea class="form-control" id="par-proc-obs" rows="2" placeholder="Notas internas, observações importantes..."></textarea></div></div><div class="modal-footer"><button class="btn" onclick="closeModal('modal-par-processo')">Cancelar</button><button class="btn btn-primary" onclick="saveParProcesso()"><i class="ti ti-device-floppy"></i> Salvar processo</button></div></div></div></body></html>
+  </div></div><div id="modal-gerar-docs" class="modal-overlay hidden"><div class="modal" style="max-width:460px"><div class="modal-header"><span class="modal-title"><i class="ti ti-file-text"></i> Gerar Documentos</span><button class="btn btn-icon btn-ghost" onclick="closeModal('modal-gerar-docs')"><i class="ti ti-x"></i></button></div><div class="modal-body"><p id="gd-cliente-nome" style="font-weight:700;font-size:13px;margin-bottom:10px;color:var(--text-primary)"></p><p style="margin-bottom:12px;font-size:12px;color:var(--text-secondary)">Selecione os documentos que deseja gerar:</p><div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px"><label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;border:1px solid var(--border-default);border-radius:var(--r)"><input type="checkbox" id="gd-proc" style="width:16px;height:16px;flex-shrink:0"><div><div style="font-weight:600;font-size:13px">Procuração Ad Judicia</div><div style="font-size:11px;color:var(--text-secondary)">Saída: PDF</div></div></label><label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;border:1px solid var(--border-default);border-radius:var(--r)"><input type="checkbox" id="gd-decl" style="width:16px;height:16px;flex-shrink:0"><div><div style="font-weight:600;font-size:13px">Declaração de Hipossuficiência</div><div style="font-size:11px;color:var(--text-secondary)">Saída: PDF</div></div></label><label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;border:1px solid var(--border-default);border-radius:var(--r)"><input type="checkbox" id="gd-cont" onchange="toggleContratoFields()" style="width:16px;height:16px;flex-shrink:0"><div><div style="font-weight:600;font-size:13px">Contrato de Honorários</div><div style="font-size:11px;color:var(--text-secondary)">Saída: Word (.docx)</div></div></label></div><div id="gd-contrato-fields" style="display:none;border:1px solid var(--border-default);border-radius:var(--r);padding:12px;margin-bottom:4px;background:var(--bg-subtle)"><div class="form-group" style="margin-bottom:10px"><label class="form-label">Objeto da ação</label><input class="form-control" id="gd-objeto" placeholder="Ex: rescisão indireta do contrato de trabalho"></div><div class="form-group"><label class="form-label">Parte contrária</label><input class="form-control" id="gd-parte-contraria" placeholder="Ex: Empresa XYZ Ltda."></div></div></div><div class="modal-footer"><button class="btn" onclick="closeModal('modal-gerar-docs')">Cancelar</button><button class="btn btn-primary" onclick="gerarDocumentosSelecionados()"><i class="ti ti-file-download"></i> Gerar selecionados</button></div></div></div><div id="modal-par-agenda" class="modal-overlay hidden"><div class="modal"><div class="modal-header"><span class="modal-title">Novo compromisso</span><button class="btn btn-icon btn-ghost" onclick="closeModal(&#39;modal-par-agenda&#39;)"><i class="ti ti-x"></i></button></div><div class="modal-body"><div class="form-grid"><div class="form-group form-full"><label class="form-label">Título *</label><input class="form-control" id="par-ag-titulo" placeholder="Ex: Audiência, Reunião..."></div><div class="form-group"><label class="form-label">Data *</label><input class="form-control" id="par-ag-data" type="date"></div><div class="form-group"><label class="form-label">Hora</label><input class="form-control" id="par-ag-hora" type="time"></div><div class="form-group form-full"><label class="form-label">Observações</label><textarea class="form-control" id="par-ag-obs" rows="3"></textarea></div></div></div><div class="modal-footer"><button class="btn" onclick="closeModal(&#39;modal-par-agenda&#39;)">Cancelar</button><button class="btn btn-primary" onclick="saveParAgendaItem()"><i class="ti ti-check"></i> Salvar</button></div></div></div><div id="modal-par-processo" class="modal-overlay hidden"><div class="modal modal-lg"><div class="modal-header"><span class="modal-title" id="modal-par-proc-title">Novo processo</span><button class="btn btn-icon btn-ghost" onclick="closeModal('modal-par-processo')"><i class="ti ti-x"></i></button></div><div class="modal-body"><input type="hidden" id="par-proc-id"><div class="form-grid" style="margin-bottom:12px"><div class="form-group form-full"><label class="form-label">Número do processo *</label><input class="form-control mono" id="par-proc-numero" placeholder="0000000-00.0000.0.00.0000"></div><div class="form-group"><label class="form-label">Cliente *</label><select class="form-control" id="par-proc-cliente"></select></div></div><div class="form-grid-3" style="margin-bottom:12px"><div class="form-group"><label class="form-label">Tribunal</label><input class="form-control" id="par-proc-tribunal" placeholder="Ex: TJSP, TRT-2, TRF-3"></div><div class="form-group"><label class="form-label">Sistema</label><select class="form-control" id="par-proc-sistema"><option value="">Selecione...</option><option>EPROC</option><option>ESAJ</option><option>E-SAJ</option><option>PJE</option><option>PROJUDI</option><option>Outro</option></select></div><div class="form-group"><label class="form-label">Status</label><select class="form-control" id="par-proc-status"><option value="ativo">Ativo</option><option value="aguardando">Aguardando</option><option value="sentenca">Sentença</option><option value="recurso">Recurso</option><option value="cumprimento">Cumprimento</option><option value="finalizado">Finalizado</option><option value="encerrado">Encerrado</option></select></div></div><div class="form-grid-3" style="margin-bottom:12px"><div class="form-group"><label class="form-label">Área jurídica</label><select class="form-control" id="par-proc-area"><option value="">Selecione...</option><option>CÍVEL</option><option>CRIMINAL</option><option>TRABALHISTA</option><option>FAMÍLIA</option><option>PREVIDENCIÁRIO</option><option>TRIBUTÁRIO</option><option>Outro</option></select></div><div class="form-group"><label class="form-label">Tipo de ação (objeto)</label><input class="form-control" id="par-proc-objeto" placeholder="Ex: Danos Morais..."></div><div class="form-group"><label class="form-label">Fase atual</label><select class="form-control" id="par-proc-fase"><option value="">Selecione...</option><option>CONHECIMENTO</option><option>CUMPRIMENTO DE SENTENÇA</option><option>RECURSAL</option><option>EXECUÇÃO</option><option>ENCERRADO</option></select></div></div><div class="form-grid-3" style="margin-bottom:12px"><div class="form-group"><label class="form-label">Vara / Juízo</label><input class="form-control" id="par-proc-vara" placeholder="Ex: 5ª Vara Cível SP"></div><div class="form-group"><label class="form-label">Link da pasta digital</label><input class="form-control" id="par-proc-link" placeholder="https://drive.google.com/..."></div><div class="form-group"><label class="form-label">Data de distribuição</label><input class="form-control" id="par-proc-data" type="date"></div></div><div class="form-grid-3" style="margin-bottom:12px"><div class="form-group"><label class="form-label">Polo ativo (autor)</label><input class="form-control" id="par-proc-ativo" placeholder="Nome do autor"></div><div class="form-group"><label class="form-label">Polo passivo (réu)</label><input class="form-control" id="par-proc-passivo" placeholder="Nome do réu"></div><div class="form-group"><label class="form-label">Valor honorários (R$)</label><input class="form-control" id="par-proc-valor" type="number" placeholder="0.00" min="0" step="0.01"></div></div><div class="form-grid" style="margin-bottom:12px"><div class="form-group"><label class="form-label">Resultado</label><select class="form-control" id="par-proc-resultado"><option value="">—</option><option>PROCEDENTE</option><option>IMPROCEDENTE</option><option>ACORDO</option><option>ACORDO ANPP</option><option>EXTINTO</option><option>ABSOLVIDO</option><option>CONDENADO/PENA</option><option>CONDENADO/LIBERDADE</option><option>LIBERDADE PROVISÓRIA</option><option>DESCONTRATADO</option></select></div><div class="form-group"><label class="form-label">Andamento atual</label><textarea class="form-control" id="par-proc-andamento" rows="2" placeholder="Descreva o andamento atual..."></textarea></div></div><div class="form-group" style="margin-bottom:12px"><label class="form-label">Observações / Estratégia</label><textarea class="form-control" id="par-proc-obs" rows="2" placeholder="Notas internas, observações importantes..."></textarea></div></div><div class="modal-footer"><button class="btn" onclick="closeModal('modal-par-processo')">Cancelar</button><button class="btn btn-primary" onclick="saveParProcesso()"><i class="ti ti-device-floppy"></i> Salvar processo</button></div></div></div><div id="modal-gerar-docs-par" class="modal-overlay hidden"><div class="modal" style="max-width:480px"><div class="modal-header"><span class="modal-title"><i class="ti ti-file-text"></i> Gerar Documentos — Parcerias</span><button class="btn btn-icon btn-ghost" onclick="closeModal('modal-gerar-docs-par')"><i class="ti ti-x"></i></button></div><div class="modal-body"><p id="gdp-cliente-nome" style="font-weight:700;font-size:13px;margin-bottom:10px;color:var(--text-primary)"></p><div style="margin-bottom:14px"><p style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:8px">Tipo de caso:</p><div style="display:flex;gap:16px"><label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px"><input type="radio" id="gdp-tipo-comum" name="gdp-tipo" value="comum" onchange="toggleParTipo()" checked> Comum</label><label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px"><input type="radio" id="gdp-tipo-salmat" name="gdp-tipo" value="salmat" onchange="toggleParTipo()"> Salário Maternidade</label></div></div><p style="margin-bottom:12px;font-size:12px;color:var(--text-secondary)">Selecione os documentos que deseja gerar:</p><div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px"><label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;border:1px solid var(--border-default);border-radius:var(--r)"><input type="checkbox" id="gdp-proc" style="width:16px;height:16px;flex-shrink:0"><div><div id="gdp-label-proc" style="font-weight:600;font-size:13px">Procuração Ad Judicia</div><div style="font-size:11px;color:var(--text-secondary)">Saída: PDF</div></div></label><label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;border:1px solid var(--border-default);border-radius:var(--r)"><input type="checkbox" id="gdp-decl" style="width:16px;height:16px;flex-shrink:0"><div><div style="font-weight:600;font-size:13px">Declaração de Hipossuficiência</div><div style="font-size:11px;color:var(--text-secondary)">Saída: PDF</div></div></label><label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;border:1px solid var(--border-default);border-radius:var(--r)"><input type="checkbox" id="gdp-cont" onchange="toggleParContratoFields()" style="width:16px;height:16px;flex-shrink:0"><div><div id="gdp-label-cont" style="font-weight:600;font-size:13px">Contrato de Honorários</div><div id="gdp-label-cont-sub" style="font-size:11px;color:var(--text-secondary)">Saída: Word (.docx)</div></div></label></div><div id="gdp-contrato-fields" style="display:none;border:1px solid var(--border-default);border-radius:var(--r);padding:12px;margin-bottom:4px;background:var(--bg-subtle)"><div class="form-group" style="margin-bottom:10px"><label class="form-label">Objeto da ação</label><input class="form-control" id="gdp-objeto" placeholder="Ex: rescisão indireta do contrato de trabalho"></div><div class="form-group"><label class="form-label">Parte contrária</label><input class="form-control" id="gdp-parte-contraria" placeholder="Ex: Empresa XYZ Ltda."></div></div></div><div class="modal-footer"><button class="btn" onclick="closeModal('modal-gerar-docs-par')">Cancelar</button><button class="btn btn-primary" onclick="gerarDocumentosParSelecionados()"><i class="ti ti-file-download"></i> Gerar selecionados</button></div></div></div>
+</body></html>
