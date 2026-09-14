@@ -4779,7 +4779,7 @@ function initApp(){
   const initials = nome.split(' ').slice(0,2).map(n=>n[0]).join('').toUpperCase();
   document.getElementById('user-avatar').textContent = initials;
   document.getElementById('user-name-display').textContent = nome;
-  document.getElementById('user-role-display').textContent = isAdmin()?'Administrador':'Parceiro';
+  document.getElementById('user-role-display').textContent = isAdmin()&&!isEstagiaria()?'Administrador':isEstagiaria()?'Estagiária':'Parceiro';
   document.getElementById('topbar-date').textContent = new Date().toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
   applyRoleUI();
   updateFirebaseStatus();
