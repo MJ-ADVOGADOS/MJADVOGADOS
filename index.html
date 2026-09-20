@@ -3991,7 +3991,64 @@ textarea.form-control{resize:vertical;min-height:72px}
       <input type="hidden" id="tarefa-id">
       <div class="form-group mb-12">
         <label class="form-label">Título *</label>
-        <input class="form-control" id="tarefa-titulo" placeholder="Descrição da tarefa">
+        <select class="form-control" id="tarefa-titulo" onchange="onTarefaTituloChange(this,'')">
+          <option value="">Selecione o tipo de tarefa</option>
+          <option>ACORDO/PROPOSTA DE ACORDO</option>
+          <option>AGRAVO DE INSTRUMENTO</option>
+          <option>APELAÇÃO</option>
+          <option>AUDIÊNCIA</option>
+          <option>BALCÃO VIRTUAL</option>
+          <option>COBRAR PAGAMENTO PARCELA</option>
+          <option>CONTESTAÇÃO</option>
+          <option>CONTRARRAZÕES</option>
+          <option>CONTRATAR CORRESPONDENTE</option>
+          <option>CRIAR GRUPO WHATSAPP</option>
+          <option>DESPACHO VIRTUAL</option>
+          <option>DISTRIBUIR CUMPRIMENTO DE SENTENÇA</option>
+          <option>EMENDA À INICIAL</option>
+          <option>EMBARGOS DE DECLARAÇÃO</option>
+          <option>EMITIR GUIAS/CUSTAS</option>
+          <option>INSTRUÇÃO PARA AUDIÊNCIA</option>
+          <option>JUNTAR DOCUMENTOS</option>
+          <option>MENSAGEM AO CLIENTE</option>
+          <option>PETIÇÃO INICIAL</option>
+          <option>PETIÇÃO INTERMEDIÁRIA</option>
+          <option>RECURSO ADESIVO</option>
+          <option>RECURSO INOMINADO</option>
+          <option>RÉPLICA</option>
+          <option>REUNIÃO CLIENTE</option>
+          <option>SOLICITAR BENEFÍCIO</option>
+          <option>SUSTENTAÇÃO ORAL</option>
+          <option>TUTELA DE URGÊNCIA</option>
+          <option>VERIFICAR CONCESSÃO DE BENEFÍCIO</option>
+          <option>VERIFICAR DECURSO DE PRAZO</option>
+          <option>VERIFICAR PROCESSO</option>
+        </select>
+      </div>
+      <!-- campos extras — AUDIÊNCIA -->
+      <div id="tarefa-audiencia-fields" style="display:none;margin-bottom:12px">
+        <div class="form-grid mb-12">
+          <div class="form-group">
+            <label class="form-label">Horário</label>
+            <input class="form-control" id="tarefa-horario" type="time">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Modalidade</label>
+            <select class="form-control" id="tarefa-modalidade" onchange="onModalidadeChange(this,'')">
+              <option value="">Selecione</option>
+              <option value="presencial">Presencial</option>
+              <option value="online">Online</option>
+            </select>
+          </div>
+        </div>
+        <div id="tarefa-endereco-wrap" style="display:none" class="form-group mb-12">
+          <label class="form-label">Endereço</label>
+          <input class="form-control" id="tarefa-endereco" placeholder="Rua, número, sala, cidade...">
+        </div>
+        <div id="tarefa-link-wrap" style="display:none" class="form-group mb-12">
+          <label class="form-label">Link da audiência online</label>
+          <input class="form-control" id="tarefa-link-online" placeholder="https://...">
+        </div>
       </div>
       <div class="form-grid mb-12">
         <div class="form-group">
@@ -5395,16 +5452,32 @@ function openParTarefaModal(id=null){
     document.getElementById('par-tar-resp').value=t.resp||'';
     document.getElementById('par-tar-desc').value=t.desc||'';
     sel.value=t.procId||'';
+    const af=document.getElementById('par-tarefa-audiencia-fields');
+    if(t.titulo==='AUDIÊNCIA'){
+      if(af)af.style.display='';
+      document.getElementById('par-tarefa-horario').value=t.horario||'';
+      document.getElementById('par-tarefa-modalidade').value=t.modalidade||'';
+      document.getElementById('par-tarefa-endereco-wrap').style.display=t.modalidade==='presencial'?'':'none';
+      document.getElementById('par-tarefa-link-wrap').style.display=t.modalidade==='online'?'':'none';
+      document.getElementById('par-tarefa-endereco').value=t.endereco||'';
+      document.getElementById('par-tarefa-link-online').value=t.linkOnline||'';
+    } else { if(af)af.style.display='none'; }
   } else {
-    ['par-tar-titulo','par-tar-data','par-tar-resp','par-tar-desc'].forEach(f=>{document.getElementById(f).value='';});
+    document.getElementById('par-tar-titulo').value='';
+    ['par-tar-data','par-tar-resp','par-tar-desc','par-tarefa-horario','par-tarefa-endereco','par-tarefa-link-online'].forEach(f=>{const el=document.getElementById(f);if(el)el.value='';});
+    const m=document.getElementById('par-tarefa-modalidade');if(m)m.value='';
     document.getElementById('par-tar-prio').value='media';
+    const af=document.getElementById('par-tarefa-audiencia-fields');if(af)af.style.display='none';
+    const ew=document.getElementById('par-tarefa-endereco-wrap');if(ew)ew.style.display='none';
+    const lw=document.getElementById('par-tarefa-link-wrap');if(lw)lw.style.display='none';
   }
   document.getElementById('modal-par-tarefa').classList.remove('hidden');
 }
 
 function buildParTarefaModal(){
   const div=document.createElement('div');div.id='modal-par-tarefa';div.className='modal-overlay hidden';
-  div.innerHTML=`<div class="modal"><div class="modal-header"><span class="modal-title">Tarefa</span><button class="btn btn-icon btn-ghost" onclick="closeModal('modal-par-tarefa')"><i class="ti ti-x"></i></button></div><div class="modal-body"><input type="hidden" id="par-tar-id"><div class="form-grid"><div class="form-group form-full"><label class="form-label">Título *</label><input class="form-control" id="par-tar-titulo" placeholder="Descreva a tarefa"></div><div class="form-group"><label class="form-label">Prioridade</label><select class="form-control" id="par-tar-prio"><option value="baixa">Baixa</option><option value="media" selected>Média</option><option value="alta">Alta</option><option value="urgente">Urgente</option></select></div><div class="form-group"><label class="form-label">Data limite</label><input class="form-control" id="par-tar-data" type="date"></div><div class="form-group"><label class="form-label">Responsável</label><select class="form-control" id="par-tar-resp"><option value="">Selecione</option><option value="Maycon Jordan">Maycon Jordan</option><option value="Lucas Magalhães">Lucas Magalhães</option><option value="Deicy de Souza">Deicy de Souza</option></select></div><div class="form-group"><label class="form-label">Processo vinculado</label><select class="form-control" id="par-tar-proc"></select></div><div class="form-group form-full"><label class="form-label">Descrição</label><textarea class="form-control" id="par-tar-desc" rows="3"></textarea></div></div></div><div class="modal-footer"><button class="btn" onclick="closeModal('modal-par-tarefa')">Cancelar</button><button class="btn btn-primary" onclick="saveParTarefa()"><i class="ti ti-check"></i> Salvar</button></div></div>`;
+  const opts=['ACORDO/PROPOSTA DE ACORDO','AGRAVO DE INSTRUMENTO','APELAÇÃO','AUDIÊNCIA','BALCÃO VIRTUAL','COBRAR PAGAMENTO PARCELA','CONTESTAÇÃO','CONTRARRAZÕES','CONTRATAR CORRESPONDENTE','CRIAR GRUPO WHATSAPP','DESPACHO VIRTUAL','DISTRIBUIR CUMPRIMENTO DE SENTENÇA','EMENDA À INICIAL','EMBARGOS DE DECLARAÇÃO','EMITIR GUIAS/CUSTAS','INSTRUÇÃO PARA AUDIÊNCIA','JUNTAR DOCUMENTOS','MENSAGEM AO CLIENTE','PETIÇÃO INICIAL','PETIÇÃO INTERMEDIÁRIA','RECURSO ADESIVO','RECURSO INOMINADO','RÉPLICA','REUNIÃO CLIENTE','SOLICITAR BENEFÍCIO','SUSTENTAÇÃO ORAL','TUTELA DE URGÊNCIA','VERIFICAR CONCESSÃO DE BENEFÍCIO','VERIFICAR DECURSO DE PRAZO','VERIFICAR PROCESSO'].map(o=>`<option>${o}</option>`).join('');
+  div.innerHTML=`<div class="modal"><div class="modal-header"><span class="modal-title">Tarefa (Parceria)</span><button class="btn btn-icon btn-ghost" onclick="closeModal('modal-par-tarefa')"><i class="ti ti-x"></i></button></div><div class="modal-body"><input type="hidden" id="par-tar-id"><div class="form-group" style="margin-bottom:12px"><label class="form-label">Título *</label><select class="form-control" id="par-tar-titulo" onchange="onTarefaTituloChange(this,'par-')"><option value="">Selecione o tipo de tarefa</option>${opts}</select></div><div id="par-tarefa-audiencia-fields" style="display:none;margin-bottom:12px"><div class="form-grid" style="margin-bottom:12px"><div class="form-group"><label class="form-label">Horário</label><input class="form-control" id="par-tarefa-horario" type="time"></div><div class="form-group"><label class="form-label">Modalidade</label><select class="form-control" id="par-tarefa-modalidade" onchange="onModalidadeChange(this,'par-')"><option value="">Selecione</option><option value="presencial">Presencial</option><option value="online">Online</option></select></div></div><div id="par-tarefa-endereco-wrap" style="display:none" class="form-group" style="margin-bottom:12px"><label class="form-label">Endereço</label><input class="form-control" id="par-tarefa-endereco" placeholder="Rua, número, sala, cidade..."></div><div id="par-tarefa-link-wrap" style="display:none" class="form-group" style="margin-bottom:12px"><label class="form-label">Link da audiência online</label><input class="form-control" id="par-tarefa-link-online" placeholder="https://..."></div></div><div class="form-grid"><div class="form-group"><label class="form-label">Prioridade</label><select class="form-control" id="par-tar-prio"><option value="baixa">Baixa</option><option value="media" selected>Média</option><option value="alta">Alta</option><option value="urgente">Urgente</option></select></div><div class="form-group"><label class="form-label">Data limite</label><input class="form-control" id="par-tar-data" type="date"></div><div class="form-group"><label class="form-label">Responsável</label><select class="form-control" id="par-tar-resp"><option value="">Selecione</option><option value="Maycon Jordan">Maycon Jordan</option><option value="Lucas Magalhães">Lucas Magalhães</option><option value="Deicy de Souza">Deicy de Souza</option></select></div><div class="form-group"><label class="form-label">Processo vinculado</label><select class="form-control" id="par-tar-proc"></select></div><div class="form-group form-full"><label class="form-label">Descrição</label><textarea class="form-control" id="par-tar-desc" rows="3"></textarea></div></div></div><div class="modal-footer"><button class="btn" onclick="closeModal('modal-par-tarefa')">Cancelar</button><button class="btn btn-primary" onclick="saveParTarefa()"><i class="ti ti-check"></i> Salvar</button></div></div>`;
   document.body.appendChild(div);
 }
 
@@ -5415,12 +5488,18 @@ async function saveParTarefa(){
   const obj={id:id||uid(),titulo,prioridade:document.getElementById('par-tar-prio').value,
     data:document.getElementById('par-tar-data').value,resp:document.getElementById('par-tar-resp').value,
     desc:document.getElementById('par-tar-desc').value,procId:document.getElementById('par-tar-proc').value,
+    horario:document.getElementById('par-tarefa-horario')?.value||'',
+    modalidade:document.getElementById('par-tarefa-modalidade')?.value||'',
+    endereco:document.getElementById('par-tarefa-endereco')?.value||'',
+    linkOnline:document.getElementById('par-tarefa-link-online')?.value||'',
     status:'pendente',criadoPor:CURRENT_USER?.email||'',criadoEm:new Date().toISOString()};
   const list=getParTarefas();
   if(id){const i=list.findIndex(x=>x.id===id);list[i]={...list[i],...obj};}else list.push(obj);
   if(FB.ready) FB.stopListen('parcerias_tarefas');
   await saveParTarefas(list);
+  await _syncTarefaAgenda({...obj, _par:true}, false);
   closeModal('modal-par-tarefa');renderParTarefas();
+  if(typeof renderAgenda==='function' && document.getElementById('pg-agenda') && !document.getElementById('pg-agenda').classList.contains('hidden')) renderAgenda();
   showToast('Tarefa salva!','success');
   if(FB.ready) setTimeout(()=>ParStore.startListeners(), 2000);
 }
@@ -5539,12 +5618,9 @@ async function saveParAgendaItem(){
 
 function renderParAgenda(){
   const el=document.getElementById('par-content');
-  const hoje=new Date().toISOString().slice(0,10);
-  const list=getParAgenda().filter(a=>a.data>=hoje).sort((a,b)=>a.data.localeCompare(b.data));
-  el.innerHTML=`<div style="display:flex;justify-content:flex-end;margin-bottom:12px"><button class="btn btn-primary btn-sm" onclick="openParAgendaModal()"><i class="ti ti-plus"></i> Novo compromisso</button></div><div class="card"><div class="card-header"><span class="card-title">Próximos compromissos</span></div><div style="padding:12px 16px" id="par-agenda-list"></div></div>`;
-  const cont=document.getElementById('par-agenda-list');
-  if(!list.length){cont.innerHTML='<p style="color:var(--text-muted);font-size:13px">Nenhum compromisso futuro.</p>';return;}
-  cont.innerHTML=list.map(a=>`<div class="dl-item"><div class="dl-dot" style="background:var(--gold-400)"></div><div class="dl-info"><div class="dl-proc">${a.titulo}</div>${a.obs?`<div class="dl-desc">${a.obs.substring(0,60)}</div>`:''}</div><div><div class="dl-date">${formatDate(a.data)}</div><div style="font-size:11px;color:var(--text-muted)">${a.hora||''}</div></div><button class="btn btn-icon btn-sm" style="margin-left:8px" onclick="confirmDeletePar('agenda','${a.id}')"><i class="ti ti-trash" style="color:var(--red-400)"></i></button></div>`).join('');
+  if(!el) return;
+  _agIsPar = true;
+  _renderAgendaCalendar();
 }
 
 // ── MOVIMENTAÇÕES PARCEIROS ─────────────────────────────────
@@ -6259,10 +6335,11 @@ function renderViewDetalhes(){
 
 // ── ABA MOVIMENTAÇÕES ────────────────────────────────────────
 const TIPOS_MOV = [
-  'Petição Inicial','Emenda à Inicial','Petição Intermediária','Apelação',
-  'Contrarrazões','Agravo de Instrumento','Embargos de Declaração','Contestação',
-  'Réplica','Audiência','Decisão','Sentença','Recurso',
-  'Cumprimento de Sentença','Acordo','Arquivamento','Outros'
+  'Acórdão','Acordo','Agravo de Instrumento','Apelação','Arquivamento',
+  'Audiência','Contestação','Contrarrazões','Cumprimento de Sentença',
+  'Decisão','Embargos de Declaração','Emenda à Inicial',
+  'Petição Inicial','Petição Intermediária','Recurso','Recurso Inominado',
+  'Réplica','Sentença','Outros'
 ];
 
 function renderViewMovimentacoes(){
@@ -6393,7 +6470,64 @@ function renderViewTarefas(){
     <div class="form-grid">
       <div class="form-group form-full">
         <label class="form-label">Título *</label>
-        <input class="form-control" id="nt-titulo" placeholder="Descreva a tarefa">
+        <select class="form-control" id="nt-titulo" onchange="onTarefaTituloChange(this,'nt-')">
+          <option value="">Selecione o tipo de tarefa</option>
+          <option>ACORDO/PROPOSTA DE ACORDO</option>
+          <option>AGRAVO DE INSTRUMENTO</option>
+          <option>APELAÇÃO</option>
+          <option>AUDIÊNCIA</option>
+          <option>BALCÃO VIRTUAL</option>
+          <option>COBRAR PAGAMENTO PARCELA</option>
+          <option>CONTESTAÇÃO</option>
+          <option>CONTRARRAZÕES</option>
+          <option>CONTRATAR CORRESPONDENTE</option>
+          <option>CRIAR GRUPO WHATSAPP</option>
+          <option>DESPACHO VIRTUAL</option>
+          <option>DISTRIBUIR CUMPRIMENTO DE SENTENÇA</option>
+          <option>EMENDA À INICIAL</option>
+          <option>EMBARGOS DE DECLARAÇÃO</option>
+          <option>EMITIR GUIAS/CUSTAS</option>
+          <option>INSTRUÇÃO PARA AUDIÊNCIA</option>
+          <option>JUNTAR DOCUMENTOS</option>
+          <option>MENSAGEM AO CLIENTE</option>
+          <option>PETIÇÃO INICIAL</option>
+          <option>PETIÇÃO INTERMEDIÁRIA</option>
+          <option>RECURSO ADESIVO</option>
+          <option>RECURSO INOMINADO</option>
+          <option>RÉPLICA</option>
+          <option>REUNIÃO CLIENTE</option>
+          <option>SOLICITAR BENEFÍCIO</option>
+          <option>SUSTENTAÇÃO ORAL</option>
+          <option>TUTELA DE URGÊNCIA</option>
+          <option>VERIFICAR CONCESSÃO DE BENEFÍCIO</option>
+          <option>VERIFICAR DECURSO DE PRAZO</option>
+          <option>VERIFICAR PROCESSO</option>
+        </select>
+      </div>
+      <!-- campos extras audiência -->
+      <div id="nt-tarefa-audiencia-fields" style="display:none" class="form-group form-full">
+        <div class="form-grid" style="margin-bottom:8px">
+          <div class="form-group">
+            <label class="form-label">Horário</label>
+            <input class="form-control" id="nt-tarefa-horario" type="time">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Modalidade</label>
+            <select class="form-control" id="nt-tarefa-modalidade" onchange="onModalidadeChange(this,'nt-')">
+              <option value="">Selecione</option>
+              <option value="presencial">Presencial</option>
+              <option value="online">Online</option>
+            </select>
+          </div>
+        </div>
+        <div id="nt-tarefa-endereco-wrap" style="display:none" class="form-group">
+          <label class="form-label">Endereço</label>
+          <input class="form-control" id="nt-tarefa-endereco" placeholder="Rua, número, sala, cidade...">
+        </div>
+        <div id="nt-tarefa-link-wrap" style="display:none" class="form-group">
+          <label class="form-label">Link da audiência online</label>
+          <input class="form-control" id="nt-tarefa-link-online" placeholder="https://...">
+        </div>
       </div>
       <div class="form-group">
         <label class="form-label">Prioridade</label>
@@ -6447,12 +6581,17 @@ async function salvarNovaTarefaProc(){
     data:document.getElementById('nt-data')?.value||'',
     resp:document.getElementById('nt-resp')?.value||'',
     desc:document.getElementById('nt-desc')?.value||'',
+    horario:document.getElementById('nt-tarefa-horario')?.value||'',
+    modalidade:document.getElementById('nt-tarefa-modalidade')?.value||'',
+    endereco:document.getElementById('nt-tarefa-endereco')?.value||'',
+    linkOnline:document.getElementById('nt-tarefa-link-online')?.value||'',
     status:'pendente',criadoEm:new Date().toISOString()};
   if(_viewIsParc){
     const list=getParTarefas(); list.push(obj); await saveParTarefas(list);
   } else {
     const list=getTarefas(); list.push(obj); await saveTarefas(list);
   }
+  await _syncTarefaAgenda(obj, false);
   logAudit('Criou tarefa',_viewIsParc?'Parcerias':'Tarefas',titulo,'','');
   updateBadges();
   renderViewTarefas();
@@ -6919,6 +7058,26 @@ function renderMovimentacoes(){
 }
 
 // ── TAREFAS ──────────────────────────────────────────────────
+function onTarefaTituloChange(sel, prefix){
+  const v=sel.value;
+  const show=v==='AUDIÊNCIA';
+  const flds=document.getElementById(prefix+'tarefa-audiencia-fields');
+  if(flds) flds.style.display=show?'':'none';
+  if(!show){
+    const h=document.getElementById(prefix+'tarefa-horario');if(h)h.value='';
+    const m=document.getElementById(prefix+'tarefa-modalidade');if(m)m.value='';
+    const ew=document.getElementById(prefix+'tarefa-endereco-wrap');if(ew)ew.style.display='none';
+    const lw=document.getElementById(prefix+'tarefa-link-wrap');if(lw)lw.style.display='none';
+  }
+}
+function onModalidadeChange(sel, prefix){
+  const v=sel.value;
+  const ew=document.getElementById(prefix+'tarefa-endereco-wrap');
+  const lw=document.getElementById(prefix+'tarefa-link-wrap');
+  if(ew)ew.style.display=v==='presencial'?'':'none';
+  if(lw)lw.style.display=v==='online'?'':'none';
+}
+
 function openTarefaModal(id=null){
   const sel=document.getElementById('tarefa-proc');
   sel.innerHTML='<option value="">Nenhum</option>'+
@@ -6934,13 +7093,66 @@ function openTarefaModal(id=null){
     document.getElementById('tarefa-resp').value=t.resp||'';
     document.getElementById('tarefa-proc').value=t.procId||'';
     document.getElementById('tarefa-desc').value=t.desc||'';
+    // campos extras audiência
+    const af=document.getElementById('tarefa-audiencia-fields');
+    if(t.titulo==='AUDIÊNCIA'){
+      if(af)af.style.display='';
+      document.getElementById('tarefa-horario').value=t.horario||'';
+      document.getElementById('tarefa-modalidade').value=t.modalidade||'';
+      document.getElementById('tarefa-endereco-wrap').style.display=t.modalidade==='presencial'?'':'none';
+      document.getElementById('tarefa-link-wrap').style.display=t.modalidade==='online'?'':'none';
+      document.getElementById('tarefa-endereco').value=t.endereco||'';
+      document.getElementById('tarefa-link-online').value=t.linkOnline||'';
+    } else {
+      if(af)af.style.display='none';
+    }
   } else {
-    ['tarefa-titulo','tarefa-data','tarefa-resp','tarefa-desc'].forEach(f=>document.getElementById(f).value='');
+    document.getElementById('tarefa-titulo').value='';
+    ['tarefa-data','tarefa-resp','tarefa-desc','tarefa-horario','tarefa-endereco','tarefa-link-online'].forEach(f=>{const el=document.getElementById(f);if(el)el.value='';});
+    const m=document.getElementById('tarefa-modalidade');if(m)m.value='';
     document.getElementById('tarefa-prioridade').value='media';
     document.getElementById('tarefa-status').value='pendente';
     document.getElementById('tarefa-proc').value='';
+    document.getElementById('tarefa-audiencia-fields').style.display='none';
+    document.getElementById('tarefa-endereco-wrap').style.display='none';
+    document.getElementById('tarefa-link-wrap').style.display='none';
   }
   openModal('modal-tarefa');
+}
+
+const AGENDA_TIPOS = new Set(['AUDIÊNCIA','REUNIÃO CLIENTE','INSTRUÇÃO PARA AUDIÊNCIA']);
+
+async function _syncTarefaAgenda(obj, isRemoving){
+  const agendaList = getAgenda();
+  const filtered = agendaList.filter(a=>a.tarefaId!==obj.id);
+  if(!isRemoving && AGENDA_TIPOS.has(obj.titulo) && obj.data){
+    // resolve nome do cliente a partir do processo vinculado
+    let clienteNome = '';
+    if(obj.procId){
+      const isPar = !!obj._par;
+      const procs = isPar ? getParProcessos() : getProcessos();
+      const clis  = isPar ? getParClientes()  : getClientes();
+      const proc  = procs.find(p=>p.id===obj.procId);
+      if(proc){ const cli=clis.find(c=>c.id===proc.clienteId); if(cli) clienteNome=cli.nome||''; }
+    }
+    const entry = {
+      id: uid(), tarefaId: obj.id,
+      titulo: obj.titulo,
+      clienteNome,
+      procId: obj.procId||'',
+      isPar: !!obj._par,
+      data: obj.data,
+      hora: obj.horario||'',
+      obs: obj.desc||'',
+      modalidade: obj.modalidade||'',
+      endereco: obj.endereco||'',
+      linkOnline: obj.linkOnline||'',
+      origem: 'tarefa',
+      criadoEm: new Date().toISOString()
+    };
+    filtered.push(entry);
+  }
+  await saveAgenda2(filtered);
 }
 
 async function saveTarefa(){
@@ -6954,15 +7166,21 @@ async function saveTarefa(){
     resp:document.getElementById('tarefa-resp').value,
     procId:document.getElementById('tarefa-proc').value,
     desc:document.getElementById('tarefa-desc').value,
+    horario:document.getElementById('tarefa-horario')?.value||'',
+    modalidade:document.getElementById('tarefa-modalidade')?.value||'',
+    endereco:document.getElementById('tarefa-endereco')?.value||'',
+    linkOnline:document.getElementById('tarefa-link-online')?.value||'',
     criadoEm:new Date().toISOString()};
   const list=getTarefas();
   if(id){ const i=list.findIndex(x=>x.id===id); if(i>-1) list[i]={...list[i],...obj}; }
   else list.push(obj);
   if(FB.ready) FB.stopListen('main_tarefas');
   await saveTarefas(list);
+  await _syncTarefaAgenda(obj, false);
   logAudit(id?'Editou tarefa':'Criou tarefa','Tarefas',titulo,'','');
   closeModal('modal-tarefa');
   renderTarefas();
+  if(typeof renderAgenda==='function' && document.getElementById('pg-agenda') && !document.getElementById('pg-agenda').classList.contains('hidden')) renderAgenda();
   updateBadges();
   showToast(id?'Tarefa atualizada!':'Tarefa criada!','success');
   if(FB.ready) setTimeout(()=>DataStore.startListeners(), 2000);
@@ -7261,37 +7479,255 @@ async function saveAgenda(){
   showToast('Compromisso adicionado!','success');
 }
 
+/* ── AGENDA CALENDAR ─────────────────────────────────────────── */
+let _agCurYear = new Date().getFullYear();
+let _agCurMonth = new Date().getMonth(); // 0-based
+let _agIsPar = false;
+
 function renderAgenda(){
   const el=document.getElementById('pg-agenda');
   if(!el) return;
-  const hoje=new Date().toISOString().slice(0,10);
-  const list=getAgenda().filter(a=>a.data>=hoje).sort((a,b)=>a.data.localeCompare(b.data));
-  el.innerHTML=`<div style="display:flex;justify-content:flex-end;margin-bottom:12px">
-    <button class="btn btn-primary btn-sm" onclick="openAgendaModal()"><i class="ti ti-plus"></i> Novo compromisso</button>
+  _agIsPar = false;
+  _renderAgendaCalendar();
+}
+
+function _agGetAllEvents(){
+  if(_agIsPar){
+    // par agenda manual + par tarefas elegíveis
+    const manual = getParAgenda();
+    const parProcs=getParProcessos(), parClis=getParClientes();
+    const fromTasks = getParTarefas()
+      .filter(t=>AGENDA_TIPOS.has(t.titulo) && t.data && t.status!=='concluida')
+      .map(t=>{
+        let clienteNome='';
+        if(t.procId){ const proc=parProcs.find(p=>p.id===t.procId); if(proc){ const cli=parClis.find(c=>c.id===proc.clienteId); if(cli) clienteNome=cli.nome||''; } }
+        return {id:t.id, tarefaId:t.id, titulo:t.titulo, clienteNome, procId:t.procId||'', isPar:true, data:t.data, hora:t.horario||'', origem:'tarefa', modalidade:t.modalidade||'', endereco:t.endereco||'', linkOnline:t.linkOnline||''};
+      });
+    const combined=[...manual];
+    fromTasks.forEach(ev=>{if(!combined.find(x=>x.tarefaId===ev.id)) combined.push(ev);});
+    return combined;
+  }
+  return getAgenda();
+}
+
+function _agEventsForMonth(year, month){
+  const prefix = `${year}-${String(month+1).padStart(2,'0')}`;
+  return _agGetAllEvents().filter(a=>a.data && a.data.startsWith(prefix));
+}
+
+function _agColorFor(titulo){
+  if(!titulo) return '#6b7280';
+  const t = titulo.toUpperCase();
+  if(t.startsWith('AUDIÊNCIA')) return '#3b82f6';
+  if(t.startsWith('REUNIÃO')) return '#10b981';
+  if(t.startsWith('INSTRUÇÃO')) return '#f59e0b';
+  return '#8b5cf6';
+}
+
+function _renderAgendaCalendar(){
+  const el=document.getElementById(_agIsPar ? 'par-content' : 'pg-agenda');
+  if(!el) return;
+  const year=_agCurYear, month=_agCurMonth;
+  const MESES=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+  const DIAS=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+  const hoje=new Date(); hoje.setHours(0,0,0,0);
+  const firstDay=new Date(year,month,1).getDay();
+  const daysInMonth=new Date(year,month+1,0).getDate();
+  const events=_agEventsForMonth(year,month);
+
+  // group events by day
+  const byDay={};
+  events.forEach(ev=>{
+    const d=parseInt((ev.data||'').split('-')[2]||0);
+    if(!byDay[d]) byDay[d]=[];
+    byDay[d].push(ev);
+  });
+
+  // build cells
+  let cells='';
+  for(let i=0;i<firstDay;i++) cells+=`<div class="ag-cell ag-empty"></div>`;
+  for(let d=1;d<=daysInMonth;d++){
+    const dateObj=new Date(year,month,d);
+    const isToday=dateObj.getTime()===hoje.getTime();
+    const dayEvs=byDay[d]||[];
+    const chips=dayEvs.slice(0,3).map(ev=>{
+      const color=_agColorFor(ev.titulo);
+      const label=(ev.clienteNome ? `${ev.titulo} — ${ev.clienteNome}` : ev.titulo)||'';
+      const clickAction=ev.procId
+        ? `event.stopPropagation();viewProcesso('${ev.procId}',${!!ev.isPar})`
+        : `event.stopPropagation();_agOpenDayPanel('${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}')`;
+      return `<div class="ag-chip" style="background:${color}20;color:${color};border-left:2px solid ${color};cursor:pointer" onclick="${clickAction}" title="${label}">${ev.hora?ev.hora+' ':''}<span>${label}</span></div>`;
+    }).join('');
+    const more=dayEvs.length>3?`<div class="ag-chip-more">+${dayEvs.length-3}</div>`:'';
+    cells+=`<div class="ag-cell${isToday?' ag-today':''}" onclick="_agOpenDayPanel('${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}')">
+      <div class="ag-day-num${isToday?' ag-today-num':''}">${d}</div>
+      ${chips}${more}
+    </div>`;
+  }
+
+  el.innerHTML=`
+  <style>
+    .ag-wrap{background:var(--card,#112240);border:1px solid var(--border-default,rgba(255,255,255,.07));border-radius:10px;overflow:hidden}
+    .ag-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border-default,rgba(255,255,255,.07))}
+    .ag-month-label{font-size:17px;font-weight:600;color:var(--text-primary,#dde8f8)}
+    .ag-nav{background:none;border:1px solid var(--border-default,rgba(255,255,255,.07));border-radius:6px;padding:5px 10px;cursor:pointer;color:var(--text-primary,#dde8f8);font-size:13px;transition:background .12s}
+    .ag-nav:hover{background:var(--border-default,rgba(255,255,255,.07))}
+    .ag-nav-row{display:flex;gap:8px;align-items:center}
+    .ag-today-btn{font-size:12px;color:var(--gold-400,#d4af37);cursor:pointer;background:none;border:1px solid var(--gold-400,#d4af37);border-radius:6px;padding:5px 10px}
+    .ag-grid-head{display:grid;grid-template-columns:repeat(7,1fr);border-bottom:1px solid var(--border-default,rgba(255,255,255,.07))}
+    .ag-dow{text-align:center;padding:8px 4px;font-size:11px;font-weight:600;letter-spacing:.06em;color:var(--text-muted,#6b849e)}
+    .ag-grid{display:grid;grid-template-columns:repeat(7,1fr)}
+    .ag-cell{min-height:90px;padding:6px 8px;border-right:1px solid var(--border-default,rgba(255,255,255,.07));border-bottom:1px solid var(--border-default,rgba(255,255,255,.07));cursor:pointer;transition:background .1s}
+    .ag-cell:hover{background:var(--surface2,#1a2f50)}
+    .ag-cell:nth-child(7n){border-right:none}
+    .ag-empty{background:transparent;cursor:default}
+    .ag-empty:hover{background:transparent}
+    .ag-today{background:rgba(212,175,55,.06)}
+    .ag-day-num{font-size:13px;font-weight:500;color:var(--text-muted,#6b849e);margin-bottom:4px;line-height:1}
+    .ag-today-num{background:var(--gold-400,#d4af37);color:#0d1b2e;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px}
+    .ag-chip{font-size:10.5px;padding:2px 5px;border-radius:3px;margin-bottom:2px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;gap:3px;align-items:center}
+    .ag-chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .ag-chip-more{font-size:10px;color:var(--text-muted,#6b849e);padding:0 4px}
+    /* day panel */
+    .ag-panel-overlay{position:fixed;inset:0;z-index:800;display:flex;align-items:flex-start;justify-content:flex-end;padding:80px 20px 20px}
+    .ag-panel{background:var(--card,#112240);border:1px solid var(--border-default,rgba(255,255,255,.07));border-radius:10px;width:340px;max-width:calc(100vw - 32px);box-shadow:0 8px 32px rgba(0,0,0,.5);animation:agSlide .15s ease}
+    @keyframes agSlide{from{opacity:0;transform:translateX(16px)}to{opacity:1;transform:none}}
+    .ag-panel-head{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border-default,rgba(255,255,255,.07))}
+    .ag-panel-date{font-size:15px;font-weight:600;color:var(--text-primary,#dde8f8)}
+    .ag-panel-close{background:none;border:none;cursor:pointer;color:var(--text-muted,#6b849e);font-size:18px;line-height:1;padding:2px}
+    .ag-panel-body{padding:12px 16px;max-height:calc(100vh - 220px);overflow-y:auto}
+    .ag-ev-item{display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--border-default,rgba(255,255,255,.07))}
+    .ag-ev-item:last-child{border-bottom:none}
+    .ag-ev-stripe{width:3px;border-radius:2px;flex-shrink:0;align-self:stretch;min-height:20px}
+    .ag-ev-info{flex:1;min-width:0}
+    .ag-ev-titulo{font-size:13px;font-weight:500;color:var(--text-primary,#dde8f8)}
+    .ag-ev-meta{font-size:11.5px;color:var(--text-muted,#6b849e);margin-top:2px}
+    .ag-ev-del{background:none;border:none;cursor:pointer;color:var(--red-400,#f26b6b);padding:2px 4px;font-size:14px;flex-shrink:0}
+    .ag-panel-new{display:flex;flex-direction:column;gap:8px;padding:12px 0 4px}
+    .ag-tipo-btn{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--surface2,#1a2f50);border:1px solid var(--border-default,rgba(255,255,255,.07));border-radius:7px;cursor:pointer;font-size:13px;color:var(--text-primary,#dde8f8);transition:border-color .12s;text-align:left}
+    .ag-tipo-btn:hover{border-color:var(--gold-400,#d4af37)}
+    .ag-tipo-icon{width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
+    .ag-empty-ev{color:var(--text-muted,#6b849e);font-size:13px;padding:8px 0}
+  </style>
+  <div style="display:flex;justify-content:flex-end;margin-bottom:16px">
+    <button class="btn btn-primary btn-sm" onclick="_agOpenDayPanel('${new Date().toISOString().slice(0,10)}')"><i class="ti ti-plus"></i> Novo compromisso</button>
   </div>
-  <div class="card">
-    <div class="card-header"><span class="card-title">Próximos compromissos</span></div>
-    <div style="padding:12px 16px">
-      ${list.length?list.map(a=>`<div class="dl-item">
-        <div class="dl-dot" style="background:var(--gold-400)"></div>
-        <div class="dl-info">
-          <div class="dl-proc">${a.titulo}</div>
-          ${a.obs?`<div class="dl-desc">${a.obs.substring(0,60)}</div>`:''}
-        </div>
-        <div>
-          <div class="dl-date">${formatDate(a.data)}</div>
-          <div style="font-size:11px;color:var(--text-muted)">${a.hora||''}</div>
-        </div>
-        <button onclick="deleteAgenda('${a.id}')" style="width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--border-default);border-radius:var(--r);background:transparent;cursor:pointer;margin-left:8px"><i class="ti ti-trash" style="font-size:14px;color:var(--red-400)"></i></button>
-      </div>`).join(''):'<p style="color:var(--text-muted);font-size:13px">Nenhum compromisso futuro.</p>'}
+  <div class="ag-wrap">
+    <div class="ag-header">
+      <span class="ag-month-label">${MESES[month]} de ${year}</span>
+      <div class="ag-nav-row">
+        <button class="ag-today-btn" onclick="_agGoToday()">Hoje</button>
+        <button class="ag-nav" onclick="_agNavMonth(-1)">&#8249;</button>
+        <button class="ag-nav" onclick="_agNavMonth(1)">&#8250;</button>
+      </div>
+    </div>
+    <div class="ag-grid-head">${DIAS.map(d=>`<div class="ag-dow">${d}</div>`).join('')}</div>
+    <div class="ag-grid">${cells}</div>
+  </div>`;
+}
+
+function _agNavMonth(delta){
+  _agCurMonth+=delta;
+  if(_agCurMonth<0){_agCurMonth=11;_agCurYear--;}
+  if(_agCurMonth>11){_agCurMonth=0;_agCurYear++;}
+  _renderAgendaCalendar();
+}
+function _agGoToday(){
+  const n=new Date();
+  _agCurYear=n.getFullYear();_agCurMonth=n.getMonth();
+  _renderAgendaCalendar();
+}
+
+function _agOpenDayPanel(dateStr){
+  // remove painel existente
+  const old=document.getElementById('ag-day-panel');if(old)old.remove();
+
+  const MESES_SHORT=['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+  const d=new Date(dateStr+'T00:00:00');
+  const label=`${d.getDate()} de ${MESES_SHORT[d.getMonth()]} de ${d.getFullYear()}`;
+  const dayEvs=_agGetAllEvents().filter(a=>a.data===dateStr);
+
+  const TIPOS_AGENDA=[
+    {label:'Audiência',color:'#3b82f6',icon:'⚖️'},
+    {label:'Reunião com cliente',color:'#10b981',icon:'🤝'},
+    {label:'Instrução para audiência',color:'#f59e0b',icon:'📋'},
+    {label:'Prazo / Recurso',color:'#8b5cf6',icon:'⏰'},
+    {label:'Lembrete',color:'#6b7280',icon:'🔔'},
+  ];
+
+  const evHtml=dayEvs.length?dayEvs.map(ev=>{
+    const color=_agColorFor(ev.titulo);
+    const isTarefaOrigin=ev.origem==='tarefa';
+    return `<div class="ag-ev-item">
+      <div class="ag-ev-stripe" style="background:${color}"></div>
+      <div class="ag-ev-info">
+        <div class="ag-ev-titulo">${ev.titulo||''}</div>
+        <div class="ag-ev-meta">${ev.hora||''}${ev.modalidade?' · '+ev.modalidade:''}${ev.endereco?' · '+ev.endereco:''}${ev.linkOnline?` · <a href="${ev.linkOnline}" target="_blank" style="color:var(--gold-400,#d4af37)">link</a>`:''}</div>
+      </div>
+      ${!isTarefaOrigin?`<button class="ag-ev-del" onclick="_agDeleteEv('${ev.id}','${dateStr}')" title="Remover"><i class="ti ti-trash"></i></button>`:'<span style="font-size:10px;color:var(--text-muted);padding:2px 4px">tarefa</span>'}
+    </div>`;
+  }).join(''):`<p class="ag-empty-ev">Nenhum compromisso neste dia.</p>`;
+
+  const tiposBtns=TIPOS_AGENDA.map(t=>`
+    <button class="ag-tipo-btn" onclick="_agCreateFromPanel('${dateStr}','${t.label}');document.getElementById('ag-day-panel').remove()">
+      <span class="ag-tipo-icon" style="background:${t.color}20">${t.icon}</span>
+      ${t.label}
+    </button>`).join('');
+
+  const overlay=document.createElement('div');
+  overlay.id='ag-day-panel';
+  overlay.className='ag-panel-overlay';
+  overlay.onclick=e=>{if(e.target===overlay)overlay.remove();};
+  overlay.innerHTML=`<div class="ag-panel">
+    <div class="ag-panel-head">
+      <span class="ag-panel-date">${label}</span>
+      <button class="ag-panel-close" onclick="document.getElementById('ag-day-panel').remove()">×</button>
+    </div>
+    <div class="ag-panel-body">
+      ${evHtml}
+      <div style="font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted,#6b849e);margin-top:14px;margin-bottom:6px">Novo compromisso</div>
+      <div class="ag-panel-new">${tiposBtns}</div>
     </div>
   </div>`;
+  document.body.appendChild(overlay);
+}
+
+async function _agCreateFromPanel(dateStr, tipo){
+  const obj={id:uid(),titulo:tipo,data:dateStr,hora:'',obs:'',origem:'agenda_manual',criadoEm:new Date().toISOString()};
+  if(_agIsPar){
+    const list=getParAgenda();list.push(obj);
+    if(FB.ready) FB.stopListen('parcerias_agenda');
+    await saveParAgenda(list);
+    if(FB.ready) setTimeout(()=>ParStore.startListeners(),2000);
+  } else {
+    const list=getAgenda();list.push(obj);
+    await saveAgenda2(list);
+  }
+  logAudit('Criou compromisso',_agIsPar?'Parceria Agenda':'Agenda',tipo,'','');
+  _renderAgendaCalendar();
+  showToast('Compromisso adicionado!','success');
+}
+
+async function _agDeleteEv(id, dateStr){
+  if(_agIsPar){
+    const list=getParAgenda().filter(x=>x.id!==id);
+    if(FB.ready) FB.stopListen('parcerias_agenda');
+    await saveParAgenda(list);
+    if(FB.ready) setTimeout(()=>ParStore.startListeners(),2000);
+  } else {
+    const list=getAgenda().filter(x=>x.id!==id);
+    await saveAgenda2(list);
+  }
+  _renderAgendaCalendar();
+  const old=document.getElementById('ag-day-panel');if(old)old.remove();
+  setTimeout(()=>_agOpenDayPanel(dateStr),50);
+  showToast('Compromisso removido','success');
 }
 
 async function deleteAgenda(id){
   const list=getAgenda().filter(x=>x.id!==id);
   await saveAgenda2(list);
-  renderAgenda();
+  _renderAgendaCalendar();
   showToast('Compromisso removido','success');
 }
 
