@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <!-- saved from url=(0068)file:///C:/Users/MAYCOM/Downloads/MJ_Advogados_Sistema_Drive_23.html -->
 <html lang="pt-BR"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
@@ -5455,9 +5454,20 @@ async function saveParTarefa(){
   const titulo=(document.getElementById('par-tar-titulo').value||'').trim();
   if(!titulo){showToast('Título é obrigatório','error');return;}
   const id=document.getElementById('par-tar-id').value;
+  const _parProcId=document.getElementById('par-tar-proc').value;
+  let _parClienteNome='', _parClienteCardId=null;
+  if(_parProcId){
+    const _parProc=getParProcessos().find(p=>p.id===_parProcId);
+    if(_parProc){
+      _parClienteCardId=_parProc.cardId||null;
+      const _parCli=getParClientes().find(c=>c.id===_parProc.clienteId);
+      if(_parCli) _parClienteNome=_parCli.nome||'';
+    }
+  }
   const obj={id:id||uid(),titulo,prioridade:document.getElementById('par-tar-prio').value,
     data:document.getElementById('par-tar-data').value,resp:document.getElementById('par-tar-resp').value,
-    desc:document.getElementById('par-tar-desc').value,procId:document.getElementById('par-tar-proc').value,
+    desc:document.getElementById('par-tar-desc').value,procId:_parProcId,
+    clienteNome:_parClienteNome,clienteCardId:_parClienteCardId,
     horario:document.getElementById('par-tarefa-horario')?.value||'',
     modalidade:document.getElementById('par-tarefa-modalidade')?.value||'',
     endereco:document.getElementById('par-tarefa-endereco')?.value||'',
@@ -7145,12 +7155,24 @@ async function saveTarefa(){
   const titulo=(document.getElementById('tarefa-titulo').value||'').trim();
   if(!titulo){ showToast('Título é obrigatório','error'); return; }
   const id=document.getElementById('tarefa-id').value;
+  const _procId=document.getElementById('tarefa-proc').value;
+  let _clienteNome='', _clienteCardId=null;
+  if(_procId){
+    const _proc=getProcessos().find(p=>p.id===_procId);
+    if(_proc){
+      _clienteCardId=_proc.cardId||null;
+      const _cli=getClientes().find(c=>c.id===_proc.clienteId);
+      if(_cli) _clienteNome=_cli.nome||'';
+    }
+  }
   const obj={id:id||uid(),titulo,
     prioridade:document.getElementById('tarefa-prioridade').value,
     status:document.getElementById('tarefa-status').value||'pendente',
     data:document.getElementById('tarefa-data').value,
     resp:document.getElementById('tarefa-resp').value,
-    procId:document.getElementById('tarefa-proc').value,
+    procId:_procId,
+    clienteNome:_clienteNome,
+    clienteCardId:_clienteCardId,
     desc:document.getElementById('tarefa-desc').value,
     horario:document.getElementById('tarefa-horario')?.value||'',
     modalidade:document.getElementById('tarefa-modalidade')?.value||'',
@@ -8406,16 +8428,21 @@ function calcAlertaParados(procsAtivos, tarefas, movs){
   const hoje = new Date(); hoje.setHours(0,0,0,0);
   const marco = new Date(MARCO_ALERTA+'T00:00:00');
   return procsAtivos.map(p=>{
-    // Última atividade após o marco
+    const tarefasProc = tarefas.filter(t=>t.procId===p.id);
+    // Processo com tarefa pendente não está parado
+    if(tarefasProc.some(t=>t.status!=='concluida')) return null;
     const datas = [];
-    tarefas.filter(t=>t.procId===p.id&&t.criadoEm&&t.criadoEm>=MARCO_ALERTA).forEach(t=>datas.push(new Date(t.criadoEm)));
+    tarefasProc.filter(t=>t.criadoEm&&t.criadoEm>=MARCO_ALERTA).forEach(t=>{
+      datas.push(new Date(t.criadoEm));
+      if(t.concluidaEm) datas.push(new Date(t.concluidaEm));
+    });
     movs.filter(m=>m.procId===p.id&&m.criadoEm&&m.criadoEm>=MARCO_ALERTA).forEach(m=>datas.push(new Date(m.criadoEm)));
     const ultimaAtiv = datas.length ? new Date(Math.max(...datas)) : null;
     const ref = ultimaAtiv ? ultimaAtiv : marco;
     ref.setHours(0,0,0,0);
     const dias = Math.floor((hoje-ref)/(1000*60*60*24));
     return {...p, diasParado:dias, ultimaAtiv};
-  }).filter(p=>p.diasParado>=30).sort((a,b)=>b.diasParado-a.diasParado);
+  }).filter(p=>p&&p.diasParado>=30).sort((a,b)=>b.diasParado-a.diasParado);
 }
 
 function renderSecaoAlerta(casos, clientes, isPar){
