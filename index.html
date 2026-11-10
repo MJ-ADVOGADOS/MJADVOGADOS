@@ -1620,16 +1620,16 @@ textarea.form-control{resize:vertical;min-height:72px}
           <table style="table-layout:fixed;width:100%">
             <colgroup>
               <col style="width:5%">  <!-- ID -->
-              <col style="width:12%"> <!-- Cliente -->
-              <col style="width:15%"> <!-- Número -->
-              <col style="width:7%">  <!-- Tribunal -->
-              <col style="width:6%">  <!-- Sistema -->
-              <col style="width:9%">  <!-- Área Jurídica -->
+              <col style="width:17%"> <!-- Cliente -->
+              <col style="width:12%"> <!-- Número -->
+              <col style="width:6%">  <!-- Tribunal -->
+              <col style="width:5%">  <!-- Sistema -->
+              <col style="width:8%">  <!-- Área Jurídica -->
               <col style="width:9%">  <!-- Tipo de Ação -->
               <col style="width:9%">  <!-- Fase Atual -->
               <col style="width:8%">  <!-- Resultado -->
               <col style="width:7%">  <!-- Status -->
-              <col style="width:6%">  <!-- V. Recebido -->
+              <col style="width:7%">  <!-- V. Recebido -->
               <col style="width:7%">  <!-- Ações -->
             </colgroup>
             <thead id="thead-processos"><tr>
@@ -5375,10 +5375,10 @@ function renderParProcessos(){
     <div id="par-proc-filters-bar">${_activeFiltersBar(_parProcFilters, true)}</div>
     <table style="table-layout:fixed;width:100%">
       <colgroup>
-        <col style="width:5%">  <col style="width:13%"> <col style="width:15%">
-        <col style="width:7%">  <col style="width:6%">  <col style="width:9%">
+        <col style="width:5%">  <col style="width:17%"> <col style="width:12%">
+        <col style="width:6%">  <col style="width:5%">  <col style="width:8%">
         <col style="width:9%">  <col style="width:9%">  <col style="width:8%">
-        <col style="width:7%">  <col style="width:6%">  <col style="width:6%">
+        <col style="width:7%">  <col style="width:7%">  <col style="width:7%">
       </colgroup>
       <thead id="par-thead-proc"><tr>
         <th>ID</th><th>CLIENTE</th><th>NÚMERO DO PROCESSO</th>
@@ -5404,7 +5404,7 @@ function renderParProcessos(){
     const posicaoBadgePar=(p.posicao==='REU')?`<span style="display:inline-flex;align-items:center;gap:3px;background:#FAECE7;color:#993C1D;font-size:9px;font-weight:600;padding:1px 6px;border-radius:20px;margin-left:4px"><i class="ti ti-shield" style="font-size:9px"></i>RÉU</span>`:'';
     return `<tr style="cursor:pointer" onclick="viewProcesso('${p.id}',true)">
       <td style="font-size:10.5px;font-weight:700;color:var(--gold-400);white-space:nowrap;letter-spacing:.3px">${formatCardId(p.cardId)}</td>
-      <td style="font-size:11.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${nome}">${posicaoBadgePar}${nome}</td>
+      <td style="font-size:11.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${nome}">${nome}${posicaoBadgePar}</td>
       <td class="td-mono" style="font-size:10.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${p.numero}">${p.numero}</td>
       <td class="td-2">${p.tribunal||'—'}</td>
       <td class="td-2">${p.sistema||'—'}</td>
@@ -6274,7 +6274,8 @@ function viewProcesso(id, isParceria=false){
   if(!p) return;
   const c = clientes.find(x=>x.id===p.clienteId);
   const idBadge = p.cardId ? `<span style="font-size:11px;background:var(--gold-100,#fef3c7);color:var(--gold-600,#b45309);padding:2px 7px;border-radius:4px;margin-right:8px;font-weight:700;vertical-align:middle">${formatCardId(p.cardId)}</span>` : '';
-  document.getElementById('view-proc-title').innerHTML = idBadge + (p.numero||'Processo');
+  const reuBadge = (p.posicao==='REU') ? `<span style="display:inline-flex;align-items:center;gap:3px;background:#FAECE7;color:#993C1D;font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px;margin-left:8px;vertical-align:middle"><i class="ti ti-shield" style="font-size:10px"></i>RÉU</span>` : '';
+  document.getElementById('view-proc-title').innerHTML = idBadge + (p.numero||'Processo') + reuBadge;
   const sub = document.getElementById('view-proc-subtitle');
   if(sub) sub.textContent = c ? c.nome : '';
   // Botão editar
@@ -6974,7 +6975,7 @@ function renderProcessos(){
     const posicaoBadge = (p.posicao==='REU')?`<span style="display:inline-flex;align-items:center;gap:3px;background:#FAECE7;color:#993C1D;font-size:9px;font-weight:600;padding:1px 6px;border-radius:20px;margin-left:4px"><i class="ti ti-shield" style="font-size:9px"></i>RÉU</span>`:'';
     return `<tr style="cursor:pointer" onclick="viewProcesso('${p.id}')">
       <td style="font-size:10.5px;font-weight:700;color:var(--gold-400);white-space:nowrap;letter-spacing:.3px">${formatCardId(p.cardId)}</td>
-      <td style="font-size:11.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${nome}">${posicaoBadge}${nome}</td>
+      <td style="font-size:11.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${nome}">${nome}${posicaoBadge}</td>
       <td style="font-family:monospace;font-size:10.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${p.numero}">${p.numero}</td>
       <td class="td-2">${p.tribunal||'—'}</td>
       <td class="td-2">${p.sistema||'—'}</td>
