@@ -1612,6 +1612,7 @@ textarea.form-control{resize:vertical;min-height:72px}
             </div>
             <div class="flex gap-8">
               <div class="search-box"><i class="ti ti-search"></i><input type="text" placeholder="Nome, número, tipo..." id="search-processos" oninput="renderProcessos()"></div>
+              <div id="btn-exportar-principal"></div>
               <button class="btn btn-primary" onclick="openProcessoModal()"><i class="ti ti-plus"></i> Novo processo</button>
             </div>
           </div>
@@ -3860,6 +3861,16 @@ textarea.form-control{resize:vertical;min-height:72px}
           <input class="form-control" id="proc-passivo" placeholder="Nome do réu">
         </div>
       </div>
+      <!-- LINHA 5c: Posição -->
+      <div class="form-grid mb-12" style="grid-template-columns:1fr">
+        <div class="form-group">
+          <label class="form-label">Sua posição no processo</label>
+          <select class="form-control" id="proc-posicao">
+            <option value="AUTOR">AUTOR — representando quem aciona</option>
+            <option value="REU">RÉU — representando quem se defende</option>
+          </select>
+        </div>
+      </div>
       <!-- LINHA 5b: Honorários -->
       <div class="form-grid mb-12">
         <div class="form-group">
@@ -4795,7 +4806,7 @@ function initApp(){
       ? DataStore.loadFromFirebase().then(()=>{ DataStore.startListeners(); renderPage(currentPage); updateBadges(); })
       : Promise.resolve();
     const p2=ParStore.loadFromFirebase().then(()=>{ ParStore.startListeners(); if(currentPage==='parcerias') renderParContent(); });
-    Promise.all([p1,p2]).then(()=>{ migrarHonorarios(); setTimeout(mostrarLembreteLogin, 600); });
+    Promise.all([p1,p2]).then(()=>{ migrarHonorarios(); setTimeout(mostrarLembreteLogin, 600); _loadAASPImportados(); });
   } else {
   }
   updateBadges();
@@ -4976,13 +4987,16 @@ function renderParDashboard(){
   const totalRes=comRes.length||1;
   const nProc=comRes.filter(p=>{ const r=(p.resultado||'').toUpperCase(); return r.includes('PROCEDENTE')&&!r.includes('IMPROCEDENTE'); }).length;
   const nAcor=comRes.filter(p=>(p.resultado||'').toUpperCase().includes('ACORDO')).length;
-  const nImpr=comRes.filter(p=>(p.resultado||'').toUpperCase().includes('IMPROCEDENTE')).length;
+  const nImprReu=comRes.filter(p=>(p.resultado||'').toUpperCase().includes('IMPROCEDENTE')&&(p.posicao||'AUTOR')==='REU').length;
+  const nImprDerrota=comRes.filter(p=>(p.resultado||'').toUpperCase().includes('IMPROCEDENTE')&&(p.posicao||'AUTOR')!=='REU').length;
+  const nImpr=nImprReu+nImprDerrota;
   const nOutr=comRes.length-nProc-nAcor-nImpr;
-  const taxaExito=comRes.length?Math.round((nProc+nAcor)/comRes.length*100):0;
+  const taxaExito=comRes.length?Math.round((nProc+nAcor+nImprReu)/comRes.length*100):0;
   const barResultados=[
     {label:'Procedente',n:nProc,cor:'var(--green-400)'},
     {label:'Acordo',n:nAcor,cor:'var(--blue-400)'},
-    {label:'Improcedente',n:nImpr,cor:'var(--red-400)'},
+    {label:'Improcedente (réu)',n:nImprReu,cor:'var(--green-400)'},
+    {label:'Improcedente',n:nImprDerrota,cor:'var(--red-400)'},
     ...(nOutr>0?[{label:'Outros',n:nOutr,cor:'var(--text-muted)'}]:[]),
   ];
 
@@ -5042,9 +5056,9 @@ function renderParDashboard(){
       ${comRes.length===0?`<div style="text-align:center;padding:24px 0;color:var(--text-muted);font-size:13px">Nenhum resultado registrado ainda.</div>`:`
       <div style="text-align:center;margin-bottom:20px">
         <div style="font-size:48px;font-weight:800;color:${taxaExito>=70?'var(--green-400)':taxaExito>=50?'var(--amber-400)':'var(--red-400)'};line-height:1">${taxaExito}%</div>
-        <div style="font-size:12px;color:var(--text-muted);margin-top:4px">êxito (procedentes + acordos)</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:4px">êxito (procedentes + acordos + impr. como réu)</div>
       </div>
-      ${barResultados.map(r=>`
+      ${barResultados.filter(r=>r.n>0).map(r=>`
       <div style="margin-bottom:12px">
         <div style="display:flex;justify-content:space-between;margin-bottom:4px">
           <span style="font-size:12px;color:var(--text-primary);display:flex;align-items:center;gap:6px">
@@ -5264,6 +5278,7 @@ function openParProcessoModal(id=null){
     document.getElementById('par-proc-data').value=p.dataDistrib||'';
     document.getElementById('par-proc-ativo').value=p.parteAtiva||'';
     document.getElementById('par-proc-passivo').value=p.partePassiva||'';
+    document.getElementById('par-proc-posicao').value=p.posicao||'AUTOR';
     document.getElementById('par-proc-valor-fixo').value=p.valorHonorariosFixo||'';
     document.getElementById('par-proc-valor-exito').value=p.valorHonorariosExito||'';
     document.getElementById('par-proc-resultado').value=p.resultado||'';
@@ -5273,7 +5288,8 @@ function openParProcessoModal(id=null){
   } else {
     ['par-proc-numero','par-proc-tribunal','par-proc-vara','par-proc-link','par-proc-data',
      'par-proc-ativo','par-proc-passivo','par-proc-objeto','par-proc-valor-fixo','par-proc-valor-exito',
-     'par-proc-andamento','par-proc-obs'].forEach(f=>{document.getElementById(f).value='';}); 
+     'par-proc-andamento','par-proc-obs'].forEach(f=>{document.getElementById(f).value='';});
+    document.getElementById('par-proc-posicao').value='AUTOR';
     document.getElementById('par-proc-sistema').value='';
     document.getElementById('par-proc-status').value='ativo';
     document.getElementById('par-proc-area').value='';
@@ -5290,7 +5306,7 @@ function buildParProcessoModal(){
   if(document.getElementById('modal-par-processo')) return;
   const div=document.createElement('div');
   div.id='modal-par-processo';div.className='modal-overlay hidden';
-  div.innerHTML='<div class="modal modal-lg"><div class="modal-header"><span class="modal-title" id="modal-par-proc-title">Novo processo</span><button class="btn btn-icon btn-ghost" onclick="closeModal(\'modal-par-processo\')"><i class="ti ti-x"></i></button></div><div class="modal-body"><input type="hidden" id="par-proc-id"><div class="form-grid" style="margin-bottom:12px"><div class="form-group form-full"><label class="form-label">Número do processo *</label><input class="form-control mono" id="par-proc-numero" placeholder="0000000-00.0000.0.00.0000"></div><div class="form-group"><label class="form-label">Cliente *</label><select class="form-control" id="par-proc-cliente"></select></div></div><div class="form-grid-3" style="margin-bottom:12px"><div class="form-group"><label class="form-label">Tribunal</label><input class="form-control" id="par-proc-tribunal" placeholder="Ex: TJSP, TRT-2, TRF-3"></div><div class="form-group"><label class="form-label">Sistema</label><select class="form-control" id="par-proc-sistema"><option value="">Selecione...</option><option>EPROC</option><option>ESAJ</option><option>E-SAJ</option><option>PJE</option><option>PROJUDI</option><option>Outro</option></select></div><div class="form-group"><label class="form-label">Status</label><select class="form-control" id="par-proc-status"><option value="ativo">Ativo</option><option value="aguardando">Aguardando</option><option value="sentenca">Sentença</option><option value="recurso">Recurso</option><option value="cumprimento">Cumprimento</option><option value="finalizado">Finalizado</option><option value="encerrado">Encerrado</option></select></div></div><div class="form-grid-3" style="margin-bottom:12px"><div class="form-group"><label class="form-label">Área jurídica</label><select class="form-control" id="par-proc-area"><option value="">Selecione...</option><option>CÍVEL</option><option>CRIMINAL</option><option>TRABALHISTA</option><option>FAMÍLIA</option><option>PREVIDENCIÁRIO</option><option>TRIBUTÁRIO</option><option>Outro</option></select></div><div class="form-group"><label class="form-label">Tipo de ação (objeto)</label><input class="form-control" id="par-proc-objeto" placeholder="Ex: Danos Morais..."></div><div class="form-group"><label class="form-label">Fase atual</label><select class="form-control" id="par-proc-fase" onchange="onFaseAtualChange(this,\'par-proc-\')"><option value="">Selecione...</option><option>CONHECIMENTO</option><option>CUMPRIMENTO DE SENTENÇA</option><option>RECURSAL</option><option>EXECUÇÃO</option><option>ENCERRADO</option></select></div></div><div class="form-grid" id="par-proc-cumprimento-wrap" style="display:none;margin-bottom:12px"><div class="form-group form-full"><label class="form-label">Número do Cumprimento de Sentença</label><input class="form-control mono" id="par-proc-numero-cumprimento" placeholder="0000000-00.0000.0.00.0000"></div></div><div class="form-grid-3" style="margin-bottom:12px"><div class="form-group"><label class="form-label">Vara / Juízo</label><input class="form-control" id="par-proc-vara" placeholder="Ex: 5ª Vara Cível SP"></div><div class="form-group"><label class="form-label">Link da pasta digital</label><input class="form-control" id="par-proc-link" placeholder="https://drive.google.com/..."></div><div class="form-group"><label class="form-label">Data de distribuição</label><input class="form-control" id="par-proc-data" type="date"></div></div><div class="form-grid-3" style="margin-bottom:12px"><div class="form-group"><label class="form-label">Polo ativo (autor)</label><input class="form-control" id="par-proc-ativo" placeholder="Nome do autor"></div><div class="form-group"><label class="form-label">Polo passivo (réu)</label><input class="form-control" id="par-proc-passivo" placeholder="Nome do réu"></div></div><div class="form-grid" style="margin-bottom:12px"><div class="form-group"><label class="form-label">Honorários Fixo (R$)</label><input class="form-control" id="par-proc-valor-fixo" type="number" placeholder="0.00" min="0" step="0.01"></div><div class="form-group"><label class="form-label">Honorários Êxito (%)</label><input class="form-control" id="par-proc-valor-exito" type="number" placeholder="0" min="0" max="100" step="0.1"></div></div><div class="form-grid" style="margin-bottom:12px"><div class="form-group"><label class="form-label">Resultado</label><select class="form-control" id="par-proc-resultado"><option value="">—</option><option>PROCEDENTE</option><option>IMPROCEDENTE</option><option>ACORDO</option><option>ACORDO ANPP</option><option>EXTINTO</option><option>ABSOLVIDO</option><option>CONDENADO/PENA</option><option>CONDENADO/LIBERDADE</option><option>LIBERDADE PROVISÓRIA</option><option>DESCONTRATADO</option></select></div><div class="form-group"><label class="form-label">Andamento atual</label><textarea class="form-control" id="par-proc-andamento" rows="2" placeholder="Descreva o andamento atual..."></textarea></div></div><div class="form-group" style="margin-bottom:12px"><label class="form-label">Observações / Estratégia</label><textarea class="form-control" id="par-proc-obs" rows="2" placeholder="Notas internas, observações importantes..."></textarea></div></div><div class="modal-footer"><button class="btn" onclick="closeModal(\'modal-par-processo\')">Cancelar</button><button class="btn btn-primary" onclick="saveParProcesso()"><i class="ti ti-device-floppy"></i> Salvar processo</button></div></div>';
+  div.innerHTML='<div class="modal modal-lg"><div class="modal-header"><span class="modal-title" id="modal-par-proc-title">Novo processo</span><button class="btn btn-icon btn-ghost" onclick="closeModal(\'modal-par-processo\')"><i class="ti ti-x"></i></button></div><div class="modal-body"><input type="hidden" id="par-proc-id"><div class="form-grid" style="margin-bottom:12px"><div class="form-group form-full"><label class="form-label">Número do processo *</label><input class="form-control mono" id="par-proc-numero" placeholder="0000000-00.0000.0.00.0000"></div><div class="form-group"><label class="form-label">Cliente *</label><select class="form-control" id="par-proc-cliente"></select></div></div><div class="form-grid-3" style="margin-bottom:12px"><div class="form-group"><label class="form-label">Tribunal</label><input class="form-control" id="par-proc-tribunal" placeholder="Ex: TJSP, TRT-2, TRF-3"></div><div class="form-group"><label class="form-label">Sistema</label><select class="form-control" id="par-proc-sistema"><option value="">Selecione...</option><option>EPROC</option><option>ESAJ</option><option>E-SAJ</option><option>PJE</option><option>PROJUDI</option><option>Outro</option></select></div><div class="form-group"><label class="form-label">Status</label><select class="form-control" id="par-proc-status"><option value="ativo">Ativo</option><option value="aguardando">Aguardando</option><option value="sentenca">Sentença</option><option value="recurso">Recurso</option><option value="cumprimento">Cumprimento</option><option value="finalizado">Finalizado</option><option value="encerrado">Encerrado</option></select></div></div><div class="form-grid-3" style="margin-bottom:12px"><div class="form-group"><label class="form-label">Área jurídica</label><select class="form-control" id="par-proc-area"><option value="">Selecione...</option><option>CÍVEL</option><option>CRIMINAL</option><option>TRABALHISTA</option><option>FAMÍLIA</option><option>PREVIDENCIÁRIO</option><option>TRIBUTÁRIO</option><option>Outro</option></select></div><div class="form-group"><label class="form-label">Tipo de ação (objeto)</label><input class="form-control" id="par-proc-objeto" placeholder="Ex: Danos Morais..."></div><div class="form-group"><label class="form-label">Fase atual</label><select class="form-control" id="par-proc-fase" onchange="onFaseAtualChange(this,\'par-proc-\')"><option value="">Selecione...</option><option>CONHECIMENTO</option><option>CUMPRIMENTO DE SENTENÇA</option><option>RECURSAL</option><option>EXECUÇÃO</option><option>ENCERRADO</option></select></div></div><div class="form-grid" id="par-proc-cumprimento-wrap" style="display:none;margin-bottom:12px"><div class="form-group form-full"><label class="form-label">Número do Cumprimento de Sentença</label><input class="form-control mono" id="par-proc-numero-cumprimento" placeholder="0000000-00.0000.0.00.0000"></div></div><div class="form-grid-3" style="margin-bottom:12px"><div class="form-group"><label class="form-label">Vara / Juízo</label><input class="form-control" id="par-proc-vara" placeholder="Ex: 5ª Vara Cível SP"></div><div class="form-group"><label class="form-label">Link da pasta digital</label><input class="form-control" id="par-proc-link" placeholder="https://drive.google.com/..."></div><div class="form-group"><label class="form-label">Data de distribuição</label><input class="form-control" id="par-proc-data" type="date"></div></div><div class="form-grid-3" style="margin-bottom:12px"><div class="form-group"><label class="form-label">Polo ativo (autor)</label><input class="form-control" id="par-proc-ativo" placeholder="Nome do autor"></div><div class="form-group"><label class="form-label">Polo passivo (réu)</label><input class="form-control" id="par-proc-passivo" placeholder="Nome do réu"></div></div><div class="form-grid" style="margin-bottom:12px;grid-template-columns:1fr"><div class="form-group"><label class="form-label">Sua posição no processo</label><select class="form-control" id="par-proc-posicao"><option value="AUTOR">AUTOR — representando quem aciona</option><option value="REU">RÉU — representando quem se defende</option></select></div></div><div class="form-grid" style="margin-bottom:12px"><div class="form-group"><label class="form-label">Honorários Fixo (R$)</label><input class="form-control" id="par-proc-valor-fixo" type="number" placeholder="0.00" min="0" step="0.01"></div><div class="form-group"><label class="form-label">Honorários Êxito (%)</label><input class="form-control" id="par-proc-valor-exito" type="number" placeholder="0" min="0" max="100" step="0.1"></div></div><div class="form-grid" style="margin-bottom:12px"><div class="form-group"><label class="form-label">Resultado</label><select class="form-control" id="par-proc-resultado"><option value="">—</option><option>PROCEDENTE</option><option>IMPROCEDENTE</option><option>ACORDO</option><option>ACORDO ANPP</option><option>EXTINTO</option><option>ABSOLVIDO</option><option>CONDENADO/PENA</option><option>CONDENADO/LIBERDADE</option><option>LIBERDADE PROVISÓRIA</option><option>DESCONTRATADO</option></select></div><div class="form-group"><label class="form-label">Andamento atual</label><textarea class="form-control" id="par-proc-andamento" rows="2" placeholder="Descreva o andamento atual..."></textarea></div></div><div class="form-group" style="margin-bottom:12px"><label class="form-label">Observações / Estratégia</label><textarea class="form-control" id="par-proc-obs" rows="2" placeholder="Notas internas, observações importantes..."></textarea></div></div><div class="modal-footer"><button class="btn" onclick="closeModal(\'modal-par-processo\')">Cancelar</button><button class="btn btn-primary" onclick="saveParProcesso()"><i class="ti ti-device-floppy"></i> Salvar processo</button></div></div>';
   document.body.appendChild(div);
 }
 
@@ -5313,6 +5329,7 @@ async function saveParProcesso(){
     dataDistrib:document.getElementById('par-proc-data').value,
     parteAtiva:document.getElementById('par-proc-ativo').value,
     partePassiva:document.getElementById('par-proc-passivo').value,
+    posicao:document.getElementById('par-proc-posicao').value||'AUTOR',
     valorHonorariosFixo:parseFloat(document.getElementById('par-proc-valor-fixo').value)||0,
     valorHonorariosExito:parseFloat(document.getElementById('par-proc-valor-exito').value)||0,
     resultado:document.getElementById('par-proc-resultado').value,
@@ -5350,7 +5367,10 @@ function renderParProcessos(){
   el.innerHTML=`<div class="table-wrap">
     <div class="table-toolbar">
       <div class="table-toolbar-left"><span class="card-title">Processos</span><span class="badge b-blue">${list.length}</span></div>
-      <button class="btn btn-primary btn-sm" onclick="openParProcessoModal()"><i class="ti ti-plus"></i> Novo processo</button>
+      <div style="display:flex;gap:8px">
+        ${isAdmin()?`<button class="btn btn-sm" onclick="exportarRelatorioExcel('parcerias')" title="Exportar relatório Excel" style="color:var(--green-600,#16a34a);border-color:var(--green-400,#4ade80)"><i class="ti ti-file-spreadsheet"></i> Exportar Excel</button>`:''}
+        <button class="btn btn-primary btn-sm" onclick="openParProcessoModal()"><i class="ti ti-plus"></i> Novo processo</button>
+      </div>
     </div>
     <div id="par-proc-filters-bar">${_activeFiltersBar(_parProcFilters, true)}</div>
     <table style="table-layout:fixed;width:100%">
@@ -5858,13 +5878,16 @@ function renderDashboard(){
   const totalRes = comRes.length||1;
   const nProc = comRes.filter(p=>{ const r=(p.resultado||'').toUpperCase(); return r.includes('PROCEDENTE')&&!r.includes('IMPROCEDENTE'); }).length;
   const nAcor = comRes.filter(p=>(p.resultado||'').toUpperCase().includes('ACORDO')).length;
-  const nImpr = comRes.filter(p=>(p.resultado||'').toUpperCase().includes('IMPROCEDENTE')).length;
+  const nImprReu = comRes.filter(p=>(p.resultado||'').toUpperCase().includes('IMPROCEDENTE')&&(p.posicao||'AUTOR')==='REU').length;
+  const nImprDerrota = comRes.filter(p=>(p.resultado||'').toUpperCase().includes('IMPROCEDENTE')&&(p.posicao||'AUTOR')!=='REU').length;
+  const nImpr = nImprReu + nImprDerrota;
   const nOutr = comRes.length - nProc - nAcor - nImpr;
-  const taxaExito = comRes.length ? Math.round((nProc+nAcor)/comRes.length*100) : 0;
+  const taxaExito = comRes.length ? Math.round((nProc+nAcor+nImprReu)/comRes.length*100) : 0;
   const barResultados = [
     {label:'Procedente', n:nProc, cor:'var(--green-400)'},
     {label:'Acordo',     n:nAcor, cor:'var(--blue-400)'},
-    {label:'Improcedente',n:nImpr,cor:'var(--red-400)'},
+    {label:'Improcedente (réu)', n:nImprReu, cor:'var(--green-400)'},
+    {label:'Improcedente', n:nImprDerrota, cor:'var(--red-400)'},
     ...(nOutr>0?[{label:'Outros',n:nOutr,cor:'var(--text-muted)'}]:[]),
   ];
 
@@ -5931,9 +5954,9 @@ function renderDashboard(){
       ${comRes.length===0?`<div style="text-align:center;padding:24px 0;color:var(--text-muted);font-size:13px">Nenhum resultado registrado ainda.</div>`:`
       <div style="text-align:center;margin-bottom:20px">
         <div style="font-size:48px;font-weight:800;color:${taxaExito>=70?'var(--green-400)':taxaExito>=50?'var(--amber-400)':'var(--red-400)'};line-height:1">${taxaExito}%</div>
-        <div style="font-size:12px;color:var(--text-muted);margin-top:4px">êxito (procedentes + acordos)</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:4px">êxito (procedentes + acordos + impr. como réu)</div>
       </div>
-      ${barResultados.map(r=>`
+      ${barResultados.filter(r=>r.n>0).map(r=>`
       <div style="margin-bottom:12px">
         <div style="display:flex;justify-content:space-between;margin-bottom:4px">
           <span style="font-size:12px;color:var(--text-primary);display:flex;align-items:center;gap:6px">
@@ -6169,6 +6192,7 @@ function openProcessoModal(id=null){
     document.getElementById('proc-data').value=p.dataDistrib||'';
     document.getElementById('proc-ativo').value=p.parteAtiva||'';
     document.getElementById('proc-passivo').value=p.partePassiva||'';
+    document.getElementById('proc-posicao').value=p.posicao||'AUTOR';
     document.getElementById('proc-valor-fixo').value=p.valorHonorariosFixo||'';
     document.getElementById('proc-valor-exito').value=p.valorHonorariosExito||'';
     document.getElementById('proc-resultado').value=p.resultado||'';
@@ -6177,6 +6201,7 @@ function openProcessoModal(id=null){
     ['proc-numero','proc-tribunal','proc-vara','proc-classe',
      'proc-data','proc-ativo','proc-passivo','proc-valor-fixo','proc-valor-exito','proc-resultado','proc-obs']
       .forEach(f=>document.getElementById(f).value='');
+    document.getElementById('proc-posicao').value='AUTOR';
     document.getElementById('proc-status').value='ativo';
     document.getElementById('proc-area-juridica').value='';
     document.getElementById('proc-objeto').value='';
@@ -6209,6 +6234,7 @@ async function saveProcesso(){
     dataDistrib:document.getElementById('proc-data').value,
     parteAtiva:document.getElementById('proc-ativo').value,
     partePassiva:document.getElementById('proc-passivo').value,
+    posicao:document.getElementById('proc-posicao').value||'AUTOR',
     valorHonorariosFixo:parseFloat(document.getElementById('proc-valor-fixo').value)||0,
     valorHonorariosExito:parseFloat(document.getElementById('proc-valor-exito').value)||0,
     resultado:document.getElementById('proc-resultado').value,
@@ -6915,6 +6941,8 @@ function renderProcessos(){
   list = _applyColFiltersToList(list, _procFilters);
   const countEl = document.getElementById('processos-count');
   if(countEl) countEl.textContent = list.length;
+  const btnExp = document.getElementById('btn-exportar-principal');
+  if(btnExp) btnExp.innerHTML = isAdmin() ? `<button class="btn btn-sm" onclick="exportarRelatorioExcel('principal')" title="Exportar relatório Excel" style="color:#16a34a;border-color:#4ade80"><i class="ti ti-file-spreadsheet"></i> Exportar Excel</button>` : '';
   // Barra de filtros ativos
   const filtersBarEl = document.getElementById('proc-filters-bar');
   if(filtersBarEl) filtersBarEl.innerHTML = _activeFiltersBar(_procFilters, false);
@@ -6942,9 +6970,10 @@ function renderProcessos(){
     const nome = c?c.nome:'—';
     const valRec = p.totalRecebidoLancamentos||0;
     const resBadge = p.resultado?`<span class="badge ${resBadgeClass(p.resultado)}" style="font-size:10px" title="${p.resultado}">${p.resultado.length>12?p.resultado.substring(0,12)+'…':p.resultado}</span>`:'—';
+    const posicaoBadge = (p.posicao==='REU')?`<span style="display:inline-flex;align-items:center;gap:3px;background:#FAECE7;color:#993C1D;font-size:9px;font-weight:600;padding:1px 6px;border-radius:20px;margin-left:4px"><i class="ti ti-shield" style="font-size:9px"></i>RÉU</span>`:'';
     return `<tr style="cursor:pointer" onclick="viewProcesso('${p.id}')">
       <td style="font-size:10.5px;font-weight:700;color:var(--gold-400);white-space:nowrap;letter-spacing:.3px">${formatCardId(p.cardId)}</td>
-      <td style="font-size:11.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${nome}">${nome}</td>
+      <td style="font-size:11.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${nome}">${nome}${posicaoBadge}</td>
       <td style="font-family:monospace;font-size:10.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${p.numero}">${p.numero}</td>
       <td class="td-2">${p.tribunal||'—'}</td>
       <td class="td-2">${p.sistema||'—'}</td>
@@ -7998,6 +8027,64 @@ function importData(){
   document.getElementById('import-file').click();
 }
 
+// ============================================================
+// EXPORTAR RELATÓRIO EXCEL DE PROCESSOS
+// ============================================================
+function exportarRelatorioExcel(aba){
+  if(!isAdmin()){ showToast('Acesso negado','error'); return; }
+  const isPar = aba === 'parcerias';
+  const processos = isPar ? getParProcessos() : getProcessos();
+  const clientes  = isPar ? getParClientes()  : getClientes();
+  const lancs     = isPar ? getParLancamentos() : getLancamentos();
+
+  const rows = processos.map(p => {
+    const cli = clientes.find(c => c.id === p.clienteId);
+    const valRec = lancs.filter(l => l.procId === p.id && l.tipo !== 'despesa' && l.status === 'recebido')
+                        .reduce((s,l) => s + (parseFloat(l.valor)||0), 0);
+    const fmtData = d => { if(!d) return ''; const [y,m,dia]=d.split('-'); return `${dia}/${m}/${y}`; };
+    return {
+      'ID':            p.cardId != null ? String(p.cardId).padStart(4,'0') : '—',
+      'CLIENTE':       cli ? cli.nome : '—',
+      'Nº DO PROCESSO':p.numero || '—',
+      'VARA/JUÍZO':    p.vara || '—',
+      'TRIBUNAL':      p.tribunal || '—',
+      'ÁREA JURÍDICA': p.area || '—',
+      'SISTEMA':       p.sistema || '—',
+      'TIPO DE AÇÃO':  p.objeto || '—',
+      'POLO ATIVO':    p.parteAtiva || '—',
+      'POLO PASSIVO':  p.partePassiva || '—',
+      'SUA POSIÇÃO':   p.posicao || 'AUTOR',
+      'DISTRIBUÍDO EM':fmtData(p.dataDistrib),
+      'FASE ATUAL':    p.faseAtual || p.fase || '—',
+      'STATUS':        p.status || 'ativo',
+      'RESULTADO':     p.resultado || '—',
+      'ANDAMENTO':     p.andamento || p.obs || '—',
+      'HON. FIXO (R$)':p.valorHonorariosFixo || 0,
+      'HON. ÊXITO (%)':p.valorHonorariosExito || 0,
+      'VALOR RECEBIDO (R$)': valRec || 0,
+    };
+  });
+
+  if(!rows.length){ showToast('Nenhum processo para exportar','error'); return; }
+
+  const ws = XLSX.utils.json_to_sheet(rows);
+
+  // Larguras das colunas
+  ws['!cols'] = [
+    {wch:6},{wch:30},{wch:28},{wch:22},{wch:10},{wch:14},{wch:10},{wch:25},
+    {wch:25},{wch:25},{wch:12},{wch:14},{wch:20},{wch:12},{wch:14},{wch:35},
+    {wch:16},{wch:16},{wch:20}
+  ];
+
+  const wb = XLSX.utils.book_new();
+  const nomeAba = isPar ? 'Parcerias' : 'Principal';
+  XLSX.utils.book_append_sheet(wb, ws, `Processos ${nomeAba}`);
+
+  const data = new Date().toLocaleDateString('pt-BR').replace(/\//g,'-');
+  XLSX.writeFile(wb, `MJ_Relatorio_Processos_${nomeAba}_${data}.xlsx`);
+  showToast(`Relatório ${nomeAba} exportado!`, 'success');
+}
+
 async function doImport(event){
   const file = event.target.files[0];
   if(!file) return;
@@ -8191,11 +8278,30 @@ function getRespAASP(isPar,area){
 }
 
 const AASP_KEY='aasp_importados_v1';
-function getAASPImportados(){ try{ return JSON.parse(localStorage.getItem(AASP_KEY)||'[]'); }catch{ return []; } }
-function jaImportadoAASP(pub,processo){ return getAASPImportados().includes(`${pub}|${normalizarNumProc(processo)}`); }
-function marcarImportadosAASP(chaves){
-  const ex=getAASPImportados();
-  localStorage.setItem(AASP_KEY,JSON.stringify([...new Set([...ex,...chaves])]));
+// Cache em memória carregado do Firebase no login
+let _aaspImportadosCache=null;
+async function _loadAASPImportados(){
+  if(_aaspImportadosCache!==null) return _aaspImportadosCache;
+  try{
+    if(FB.ready){
+      const snap=await FB.db.ref('main/aasp_importados').once('value');
+      _aaspImportadosCache=snap.val()||[];
+    } else {
+      _aaspImportadosCache=JSON.parse(localStorage.getItem(AASP_KEY)||'[]');
+    }
+  }catch{ _aaspImportadosCache=[]; }
+  return _aaspImportadosCache;
+}
+function jaImportadoAASP(pub,processo){
+  const chave=`${pub}|${normalizarNumProc(processo)}`;
+  return (_aaspImportadosCache||[]).includes(chave);
+}
+async function marcarImportadosAASP(chaves){
+  const ex=await _loadAASPImportados();
+  const novo=[...new Set([...ex,...chaves])];
+  _aaspImportadosCache=novo;
+  localStorage.setItem(AASP_KEY,JSON.stringify(novo));
+  if(FB.ready) await FB.db.ref('main/aasp_importados').set(novo).catch(()=>{});
 }
 
 function abrirImportacaoAASP(){
@@ -9788,5 +9894,5 @@ window.onload=async function(){
 };
 </script>
 
-<div id="modal-gerar-docs" class="modal-overlay hidden"><div class="modal" style="max-width:460px"><div class="modal-header"><span class="modal-title"><i class="ti ti-file-text"></i> Gerar Documentos</span><button class="btn btn-icon btn-ghost" onclick="closeModal('modal-gerar-docs')"><i class="ti ti-x"></i></button></div><div class="modal-body"><p id="gd-cliente-nome" style="font-weight:700;font-size:13px;margin-bottom:10px;color:var(--text-primary)"></p><p style="margin-bottom:12px;font-size:12px;color:var(--text-secondary)">Selecione os documentos que deseja gerar:</p><div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px"><label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;border:1px solid var(--border-default);border-radius:var(--r)"><input type="checkbox" id="gd-proc" style="width:16px;height:16px;flex-shrink:0"><div><div style="font-weight:600;font-size:13px">Procuração Ad Judicia</div><div style="font-size:11px;color:var(--text-secondary)">Saída: PDF</div></div></label><label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;border:1px solid var(--border-default);border-radius:var(--r)"><input type="checkbox" id="gd-decl" style="width:16px;height:16px;flex-shrink:0"><div><div style="font-weight:600;font-size:13px">Declaração de Hipossuficiência</div><div style="font-size:11px;color:var(--text-secondary)">Saída: PDF</div></div></label><label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;border:1px solid var(--border-default);border-radius:var(--r)"><input type="checkbox" id="gd-cont" onchange="toggleContratoFields()" style="width:16px;height:16px;flex-shrink:0"><div><div style="font-weight:600;font-size:13px">Contrato de Honorários</div><div style="font-size:11px;color:var(--text-secondary)">Saída: Word (.docx)</div></div></label></div><div id="gd-contrato-fields" style="display:none;border:1px solid var(--border-default);border-radius:var(--r);padding:12px;margin-bottom:4px;background:var(--bg-subtle)"><div class="form-group" style="margin-bottom:10px"><label class="form-label">Objeto da ação</label><input class="form-control" id="gd-objeto" placeholder="Ex: rescisão indireta do contrato de trabalho"></div><div class="form-group"><label class="form-label">Parte contrária</label><input class="form-control" id="gd-parte-contraria" placeholder="Ex: Empresa XYZ Ltda."></div></div></div><div class="modal-footer"><button class="btn" onclick="closeModal('modal-gerar-docs')">Cancelar</button><button class="btn btn-primary" onclick="gerarDocumentosSelecionados()"><i class="ti ti-file-download"></i> Gerar selecionados</button></div></div></div><div id="modal-par-agenda" class="modal-overlay hidden"><div class="modal"><div class="modal-header"><span class="modal-title">Novo compromisso</span><button class="btn btn-icon btn-ghost" onclick="closeModal(&#39;modal-par-agenda&#39;)"><i class="ti ti-x"></i></button></div><div class="modal-body"><div class="form-grid"><div class="form-group form-full"><label class="form-label">Título *</label><input class="form-control" id="par-ag-titulo" placeholder="Ex: Audiência, Reunião..."></div><div class="form-group"><label class="form-label">Data *</label><input class="form-control" id="par-ag-data" type="date"></div><div class="form-group"><label class="form-label">Hora</label><input class="form-control" id="par-ag-hora" type="time"></div><div class="form-group form-full"><label class="form-label">Observações</label><textarea class="form-control" id="par-ag-obs" rows="3"></textarea></div></div></div><div class="modal-footer"><button class="btn" onclick="closeModal(&#39;modal-par-agenda&#39;)">Cancelar</button><button class="btn btn-primary" onclick="saveParAgendaItem()"><i class="ti ti-check"></i> Salvar</button></div></div></div><div id="modal-par-processo" class="modal-overlay hidden"><div class="modal modal-lg"><div class="modal-header"><span class="modal-title" id="modal-par-proc-title">Novo processo</span><button class="btn btn-icon btn-ghost" onclick="closeModal('modal-par-processo')"><i class="ti ti-x"></i></button></div><div class="modal-body"><input type="hidden" id="par-proc-id"><div class="form-grid" style="margin-bottom:12px"><div class="form-group form-full"><label class="form-label">Número do processo *</label><input class="form-control mono" id="par-proc-numero" placeholder="0000000-00.0000.0.00.0000"></div><div class="form-group"><label class="form-label">Cliente *</label><select class="form-control" id="par-proc-cliente"></select></div></div><div class="form-grid-3" style="margin-bottom:12px"><div class="form-group"><label class="form-label">Tribunal</label><input class="form-control" id="par-proc-tribunal" placeholder="Ex: TJSP, TRT-2, TRF-3"></div><div class="form-group"><label class="form-label">Sistema</label><select class="form-control" id="par-proc-sistema"><option value="">Selecione...</option><option>EPROC</option><option>ESAJ</option><option>E-SAJ</option><option>PJE</option><option>PROJUDI</option><option>Outro</option></select></div><div class="form-group"><label class="form-label">Status</label><select class="form-control" id="par-proc-status"><option value="ativo">Ativo</option><option value="aguardando">Aguardando</option><option value="sentenca">Sentença</option><option value="recurso">Recurso</option><option value="cumprimento">Cumprimento</option><option value="finalizado">Finalizado</option><option value="encerrado">Encerrado</option></select></div></div><div class="form-grid-3" style="margin-bottom:12px"><div class="form-group"><label class="form-label">Área jurídica</label><select class="form-control" id="par-proc-area"><option value="">Selecione...</option><option>CÍVEL</option><option>CRIMINAL</option><option>TRABALHISTA</option><option>FAMÍLIA</option><option>PREVIDENCIÁRIO</option><option>TRIBUTÁRIO</option><option>Outro</option></select></div><div class="form-group"><label class="form-label">Tipo de ação (objeto)</label><input class="form-control" id="par-proc-objeto" placeholder="Ex: Danos Morais..."></div><div class="form-group"><label class="form-label">Fase atual</label><select class="form-control" id="par-proc-fase" onchange="onFaseAtualChange(this,'par-proc-')"><option value="">Selecione...</option><option>CONHECIMENTO</option><option>CUMPRIMENTO DE SENTENÇA</option><option>RECURSAL</option><option>EXECUÇÃO</option><option>ENCERRADO</option></select></div></div><div class="form-grid" id="par-proc-cumprimento-wrap" style="display:none;margin-bottom:12px"><div class="form-group form-full"><label class="form-label">Número do Cumprimento de Sentença</label><input class="form-control mono" id="par-proc-numero-cumprimento" placeholder="0000000-00.0000.0.00.0000"></div></div><div class="form-grid-3" style="margin-bottom:12px"><div class="form-group"><label class="form-label">Vara / Juízo</label><input class="form-control" id="par-proc-vara" placeholder="Ex: 5ª Vara Cível SP"></div><div class="form-group"><label class="form-label">Link da pasta digital</label><input class="form-control" id="par-proc-link" placeholder="https://drive.google.com/..."></div><div class="form-group"><label class="form-label">Data de distribuição</label><input class="form-control" id="par-proc-data" type="date"></div></div><div class="form-grid-3" style="margin-bottom:12px"><div class="form-group"><label class="form-label">Polo ativo (autor)</label><input class="form-control" id="par-proc-ativo" placeholder="Nome do autor"></div><div class="form-group"><label class="form-label">Polo passivo (réu)</label><input class="form-control" id="par-proc-passivo" placeholder="Nome do réu"></div></div><div class="form-grid" style="margin-bottom:12px"><div class="form-group"><label class="form-label">Honorários Fixo (R$)</label><input class="form-control" id="par-proc-valor-fixo" type="number" placeholder="0.00" min="0" step="0.01"></div><div class="form-group"><label class="form-label">Honorários Êxito (%)</label><input class="form-control" id="par-proc-valor-exito" type="number" placeholder="0" min="0" max="100" step="0.1"></div></div><div class="form-grid" style="margin-bottom:12px"><div class="form-group"><label class="form-label">Resultado</label><select class="form-control" id="par-proc-resultado"><option value="">—</option><option>PROCEDENTE</option><option>IMPROCEDENTE</option><option>ACORDO</option><option>ACORDO ANPP</option><option>EXTINTO</option><option>ABSOLVIDO</option><option>CONDENADO/PENA</option><option>CONDENADO/LIBERDADE</option><option>LIBERDADE PROVISÓRIA</option><option>DESCONTRATADO</option></select></div><div class="form-group"><label class="form-label">Andamento atual</label><textarea class="form-control" id="par-proc-andamento" rows="2" placeholder="Descreva o andamento atual..."></textarea></div></div><div class="form-group" style="margin-bottom:12px"><label class="form-label">Observações / Estratégia</label><textarea class="form-control" id="par-proc-obs" rows="2" placeholder="Notas internas, observações importantes..."></textarea></div></div><div class="modal-footer"><button class="btn" onclick="closeModal('modal-par-processo')">Cancelar</button><button class="btn btn-primary" onclick="saveParProcesso()"><i class="ti ti-device-floppy"></i> Salvar processo</button></div></div></div><div id="modal-gerar-docs-par" class="modal-overlay hidden"><div class="modal" style="max-width:480px"><div class="modal-header"><span class="modal-title"><i class="ti ti-file-text"></i> Gerar Documentos — Parcerias</span><button class="btn btn-icon btn-ghost" onclick="closeModal('modal-gerar-docs-par')"><i class="ti ti-x"></i></button></div><div class="modal-body"><p id="gdp-cliente-nome" style="font-weight:700;font-size:13px;margin-bottom:10px;color:var(--text-primary)"></p><div style="margin-bottom:14px"><p style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:8px">Tipo de caso:</p><div style="display:flex;gap:16px"><label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px"><input type="radio" id="gdp-tipo-comum" name="gdp-tipo" value="comum" onchange="toggleParTipo()" checked> Comum</label><label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px"><input type="radio" id="gdp-tipo-salmat" name="gdp-tipo" value="salmat" onchange="toggleParTipo()"> Salário Maternidade</label></div></div><p style="margin-bottom:12px;font-size:12px;color:var(--text-secondary)">Selecione os documentos que deseja gerar:</p><div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px"><label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;border:1px solid var(--border-default);border-radius:var(--r)"><input type="checkbox" id="gdp-proc" style="width:16px;height:16px;flex-shrink:0"><div><div id="gdp-label-proc" style="font-weight:600;font-size:13px">Procuração Ad Judicia</div><div style="font-size:11px;color:var(--text-secondary)">Saída: PDF</div></div></label><label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;border:1px solid var(--border-default);border-radius:var(--r)"><input type="checkbox" id="gdp-decl" style="width:16px;height:16px;flex-shrink:0"><div><div style="font-weight:600;font-size:13px">Declaração de Hipossuficiência</div><div style="font-size:11px;color:var(--text-secondary)">Saída: PDF</div></div></label><label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;border:1px solid var(--border-default);border-radius:var(--r)"><input type="checkbox" id="gdp-cont" onchange="toggleParContratoFields()" style="width:16px;height:16px;flex-shrink:0"><div><div id="gdp-label-cont" style="font-weight:600;font-size:13px">Contrato de Honorários</div><div id="gdp-label-cont-sub" style="font-size:11px;color:var(--text-secondary)">Saída: Word (.docx)</div></div></label></div><div id="gdp-contrato-fields" style="display:none;border:1px solid var(--border-default);border-radius:var(--r);padding:12px;margin-bottom:4px;background:var(--bg-subtle)"><div class="form-group" style="margin-bottom:10px"><label class="form-label">Objeto da ação</label><input class="form-control" id="gdp-objeto" placeholder="Ex: rescisão indireta do contrato de trabalho"></div><div class="form-group"><label class="form-label">Parte contrária</label><input class="form-control" id="gdp-parte-contraria" placeholder="Ex: Empresa XYZ Ltda."></div></div></div><div class="modal-footer"><button class="btn" onclick="closeModal('modal-gerar-docs-par')">Cancelar</button><button class="btn btn-primary" onclick="gerarDocumentosParSelecionados()"><i class="ti ti-file-download"></i> Gerar selecionados</button></div></div></div>
+<div id="modal-gerar-docs" class="modal-overlay hidden"><div class="modal" style="max-width:460px"><div class="modal-header"><span class="modal-title"><i class="ti ti-file-text"></i> Gerar Documentos</span><button class="btn btn-icon btn-ghost" onclick="closeModal('modal-gerar-docs')"><i class="ti ti-x"></i></button></div><div class="modal-body"><p id="gd-cliente-nome" style="font-weight:700;font-size:13px;margin-bottom:10px;color:var(--text-primary)"></p><p style="margin-bottom:12px;font-size:12px;color:var(--text-secondary)">Selecione os documentos que deseja gerar:</p><div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px"><label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;border:1px solid var(--border-default);border-radius:var(--r)"><input type="checkbox" id="gd-proc" style="width:16px;height:16px;flex-shrink:0"><div><div style="font-weight:600;font-size:13px">Procuração Ad Judicia</div><div style="font-size:11px;color:var(--text-secondary)">Saída: PDF</div></div></label><label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;border:1px solid var(--border-default);border-radius:var(--r)"><input type="checkbox" id="gd-decl" style="width:16px;height:16px;flex-shrink:0"><div><div style="font-weight:600;font-size:13px">Declaração de Hipossuficiência</div><div style="font-size:11px;color:var(--text-secondary)">Saída: PDF</div></div></label><label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;border:1px solid var(--border-default);border-radius:var(--r)"><input type="checkbox" id="gd-cont" onchange="toggleContratoFields()" style="width:16px;height:16px;flex-shrink:0"><div><div style="font-weight:600;font-size:13px">Contrato de Honorários</div><div style="font-size:11px;color:var(--text-secondary)">Saída: Word (.docx)</div></div></label></div><div id="gd-contrato-fields" style="display:none;border:1px solid var(--border-default);border-radius:var(--r);padding:12px;margin-bottom:4px;background:var(--bg-subtle)"><div class="form-group" style="margin-bottom:10px"><label class="form-label">Objeto da ação</label><input class="form-control" id="gd-objeto" placeholder="Ex: rescisão indireta do contrato de trabalho"></div><div class="form-group"><label class="form-label">Parte contrária</label><input class="form-control" id="gd-parte-contraria" placeholder="Ex: Empresa XYZ Ltda."></div></div></div><div class="modal-footer"><button class="btn" onclick="closeModal('modal-gerar-docs')">Cancelar</button><button class="btn btn-primary" onclick="gerarDocumentosSelecionados()"><i class="ti ti-file-download"></i> Gerar selecionados</button></div></div></div><div id="modal-par-agenda" class="modal-overlay hidden"><div class="modal"><div class="modal-header"><span class="modal-title">Novo compromisso</span><button class="btn btn-icon btn-ghost" onclick="closeModal(&#39;modal-par-agenda&#39;)"><i class="ti ti-x"></i></button></div><div class="modal-body"><div class="form-grid"><div class="form-group form-full"><label class="form-label">Título *</label><input class="form-control" id="par-ag-titulo" placeholder="Ex: Audiência, Reunião..."></div><div class="form-group"><label class="form-label">Data *</label><input class="form-control" id="par-ag-data" type="date"></div><div class="form-group"><label class="form-label">Hora</label><input class="form-control" id="par-ag-hora" type="time"></div><div class="form-group form-full"><label class="form-label">Observações</label><textarea class="form-control" id="par-ag-obs" rows="3"></textarea></div></div></div><div class="modal-footer"><button class="btn" onclick="closeModal(&#39;modal-par-agenda&#39;)">Cancelar</button><button class="btn btn-primary" onclick="saveParAgendaItem()"><i class="ti ti-check"></i> Salvar</button></div></div></div><div id="modal-par-processo" class="modal-overlay hidden"><div class="modal modal-lg"><div class="modal-header"><span class="modal-title" id="modal-par-proc-title">Novo processo</span><button class="btn btn-icon btn-ghost" onclick="closeModal('modal-par-processo')"><i class="ti ti-x"></i></button></div><div class="modal-body"><input type="hidden" id="par-proc-id"><div class="form-grid" style="margin-bottom:12px"><div class="form-group form-full"><label class="form-label">Número do processo *</label><input class="form-control mono" id="par-proc-numero" placeholder="0000000-00.0000.0.00.0000"></div><div class="form-group"><label class="form-label">Cliente *</label><select class="form-control" id="par-proc-cliente"></select></div></div><div class="form-grid-3" style="margin-bottom:12px"><div class="form-group"><label class="form-label">Tribunal</label><input class="form-control" id="par-proc-tribunal" placeholder="Ex: TJSP, TRT-2, TRF-3"></div><div class="form-group"><label class="form-label">Sistema</label><select class="form-control" id="par-proc-sistema"><option value="">Selecione...</option><option>EPROC</option><option>ESAJ</option><option>E-SAJ</option><option>PJE</option><option>PROJUDI</option><option>Outro</option></select></div><div class="form-group"><label class="form-label">Status</label><select class="form-control" id="par-proc-status"><option value="ativo">Ativo</option><option value="aguardando">Aguardando</option><option value="sentenca">Sentença</option><option value="recurso">Recurso</option><option value="cumprimento">Cumprimento</option><option value="finalizado">Finalizado</option><option value="encerrado">Encerrado</option></select></div></div><div class="form-grid-3" style="margin-bottom:12px"><div class="form-group"><label class="form-label">Área jurídica</label><select class="form-control" id="par-proc-area"><option value="">Selecione...</option><option>CÍVEL</option><option>CRIMINAL</option><option>TRABALHISTA</option><option>FAMÍLIA</option><option>PREVIDENCIÁRIO</option><option>TRIBUTÁRIO</option><option>Outro</option></select></div><div class="form-group"><label class="form-label">Tipo de ação (objeto)</label><input class="form-control" id="par-proc-objeto" placeholder="Ex: Danos Morais..."></div><div class="form-group"><label class="form-label">Fase atual</label><select class="form-control" id="par-proc-fase" onchange="onFaseAtualChange(this,'par-proc-')"><option value="">Selecione...</option><option>CONHECIMENTO</option><option>CUMPRIMENTO DE SENTENÇA</option><option>RECURSAL</option><option>EXECUÇÃO</option><option>ENCERRADO</option></select></div></div><div class="form-grid" id="par-proc-cumprimento-wrap" style="display:none;margin-bottom:12px"><div class="form-group form-full"><label class="form-label">Número do Cumprimento de Sentença</label><input class="form-control mono" id="par-proc-numero-cumprimento" placeholder="0000000-00.0000.0.00.0000"></div></div><div class="form-grid-3" style="margin-bottom:12px"><div class="form-group"><label class="form-label">Vara / Juízo</label><input class="form-control" id="par-proc-vara" placeholder="Ex: 5ª Vara Cível SP"></div><div class="form-group"><label class="form-label">Link da pasta digital</label><input class="form-control" id="par-proc-link" placeholder="https://drive.google.com/..."></div><div class="form-group"><label class="form-label">Data de distribuição</label><input class="form-control" id="par-proc-data" type="date"></div></div><div class="form-grid-3" style="margin-bottom:12px"><div class="form-group"><label class="form-label">Polo ativo (autor)</label><input class="form-control" id="par-proc-ativo" placeholder="Nome do autor"></div><div class="form-group"><label class="form-label">Polo passivo (réu)</label><input class="form-control" id="par-proc-passivo" placeholder="Nome do réu"></div></div><div class="form-grid" style="margin-bottom:12px;grid-template-columns:1fr"><div class="form-group"><label class="form-label">Sua posição no processo</label><select class="form-control" id="par-proc-posicao"><option value="AUTOR">AUTOR — representando quem aciona</option><option value="REU">RÉU — representando quem se defende</option></select></div></div><div class="form-grid" style="margin-bottom:12px"><div class="form-group"><label class="form-label">Honorários Fixo (R$)</label><input class="form-control" id="par-proc-valor-fixo" type="number" placeholder="0.00" min="0" step="0.01"></div><div class="form-group"><label class="form-label">Honorários Êxito (%)</label><input class="form-control" id="par-proc-valor-exito" type="number" placeholder="0" min="0" max="100" step="0.1"></div></div><div class="form-grid" style="margin-bottom:12px"><div class="form-group"><label class="form-label">Resultado</label><select class="form-control" id="par-proc-resultado"><option value="">—</option><option>PROCEDENTE</option><option>IMPROCEDENTE</option><option>ACORDO</option><option>ACORDO ANPP</option><option>EXTINTO</option><option>ABSOLVIDO</option><option>CONDENADO/PENA</option><option>CONDENADO/LIBERDADE</option><option>LIBERDADE PROVISÓRIA</option><option>DESCONTRATADO</option></select></div><div class="form-group"><label class="form-label">Andamento atual</label><textarea class="form-control" id="par-proc-andamento" rows="2" placeholder="Descreva o andamento atual..."></textarea></div></div><div class="form-group" style="margin-bottom:12px"><label class="form-label">Observações / Estratégia</label><textarea class="form-control" id="par-proc-obs" rows="2" placeholder="Notas internas, observações importantes..."></textarea></div></div><div class="modal-footer"><button class="btn" onclick="closeModal('modal-par-processo')">Cancelar</button><button class="btn btn-primary" onclick="saveParProcesso()"><i class="ti ti-device-floppy"></i> Salvar processo</button></div></div></div><div id="modal-gerar-docs-par" class="modal-overlay hidden"><div class="modal" style="max-width:480px"><div class="modal-header"><span class="modal-title"><i class="ti ti-file-text"></i> Gerar Documentos — Parcerias</span><button class="btn btn-icon btn-ghost" onclick="closeModal('modal-gerar-docs-par')"><i class="ti ti-x"></i></button></div><div class="modal-body"><p id="gdp-cliente-nome" style="font-weight:700;font-size:13px;margin-bottom:10px;color:var(--text-primary)"></p><div style="margin-bottom:14px"><p style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:8px">Tipo de caso:</p><div style="display:flex;gap:16px"><label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px"><input type="radio" id="gdp-tipo-comum" name="gdp-tipo" value="comum" onchange="toggleParTipo()" checked> Comum</label><label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px"><input type="radio" id="gdp-tipo-salmat" name="gdp-tipo" value="salmat" onchange="toggleParTipo()"> Salário Maternidade</label></div></div><p style="margin-bottom:12px;font-size:12px;color:var(--text-secondary)">Selecione os documentos que deseja gerar:</p><div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px"><label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;border:1px solid var(--border-default);border-radius:var(--r)"><input type="checkbox" id="gdp-proc" style="width:16px;height:16px;flex-shrink:0"><div><div id="gdp-label-proc" style="font-weight:600;font-size:13px">Procuração Ad Judicia</div><div style="font-size:11px;color:var(--text-secondary)">Saída: PDF</div></div></label><label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;border:1px solid var(--border-default);border-radius:var(--r)"><input type="checkbox" id="gdp-decl" style="width:16px;height:16px;flex-shrink:0"><div><div style="font-weight:600;font-size:13px">Declaração de Hipossuficiência</div><div style="font-size:11px;color:var(--text-secondary)">Saída: PDF</div></div></label><label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;border:1px solid var(--border-default);border-radius:var(--r)"><input type="checkbox" id="gdp-cont" onchange="toggleParContratoFields()" style="width:16px;height:16px;flex-shrink:0"><div><div id="gdp-label-cont" style="font-weight:600;font-size:13px">Contrato de Honorários</div><div id="gdp-label-cont-sub" style="font-size:11px;color:var(--text-secondary)">Saída: Word (.docx)</div></div></label></div><div id="gdp-contrato-fields" style="display:none;border:1px solid var(--border-default);border-radius:var(--r);padding:12px;margin-bottom:4px;background:var(--bg-subtle)"><div class="form-group" style="margin-bottom:10px"><label class="form-label">Objeto da ação</label><input class="form-control" id="gdp-objeto" placeholder="Ex: rescisão indireta do contrato de trabalho"></div><div class="form-group"><label class="form-label">Parte contrária</label><input class="form-control" id="gdp-parte-contraria" placeholder="Ex: Empresa XYZ Ltda."></div></div></div><div class="modal-footer"><button class="btn" onclick="closeModal('modal-gerar-docs-par')">Cancelar</button><button class="btn btn-primary" onclick="gerarDocumentosParSelecionados()"><i class="ti ti-file-download"></i> Gerar selecionados</button></div></div></div>
 </body></html>
